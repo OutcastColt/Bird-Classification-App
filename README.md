@@ -10,7 +10,7 @@ Ubuntu Server 22.04+
 Install system dependencies:
 
     sudo apt update
-    sudo apt install -y ffmpeg python3.11 python3.11-venv git
+    sudo apt install -y ffmpeg python3.12 python3.12-venv git
 
 For GPU support (optional — Quadro K2100M / other OpenCL-capable card):
 
@@ -26,7 +26,7 @@ For GPU support (optional — Quadro K2100M / other OpenCL-capable card):
 
     # Create Python virtual environment and install dependencies
     cd /opt/birdwatch
-    sudo -u birdwatch python3.11 -m venv venv
+    sudo -u birdwatch python3.12 -m venv venv
     sudo -u birdwatch venv/bin/pip install -r requirements.txt
 
 ## Configuration
