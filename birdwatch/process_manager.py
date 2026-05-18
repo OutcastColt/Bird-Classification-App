@@ -2,7 +2,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import multiprocessing
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
@@ -94,6 +94,8 @@ class ProcessManager:
             self.logger.info("Started inference worker: %d", i)
 
     def stop_all(self) -> None:
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
         for entry in self._workers.values():
             entry.stop_event.set()
         for entry in self._workers.values():
@@ -120,20 +122,26 @@ class ProcessManager:
                             "Worker %s exceeded max restarts — marked failed", key
                         )
                     continue
-                entry.restart_count += 1
-                self.logger.warning(
-                    "Worker %s died; restarting (attempt %d)", key, entry.restart_count
-                )
                 if key.startswith("camera:"):
                     cam_id = key.split(":", 1)[1]
                     cam = next(
                         (c for c in self.cfg.cameras if c.id == cam_id), None
                     )
                     if cam and cam.enabled:
+                        entry.restart_count += 1
+                        self.logger.warning(
+                            "Worker %s died; restarting (attempt %d)", key, entry.restart_count
+                        )
                         new = self._spawn_camera(cam)
                         new.restart_count = entry.restart_count
                         self._workers[key] = new
+                    else:
+                        self.logger.info("Camera worker %s died but is disabled — not restarting", key)
                 elif key.startswith("inference:"):
+                    entry.restart_count += 1
+                    self.logger.warning(
+                        "Worker %s died; restarting (attempt %d)", key, entry.restart_count
+                    )
                     idx = int(key.split(":", 1)[1])
                     new = self._spawn_inference(idx)
                     new.restart_count = entry.restart_count
