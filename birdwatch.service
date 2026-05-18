@@ -1,0 +1,16 @@
+[Unit]
+Description=BirdWatch — Real-Time Bird Detection
+After=network.target
+
+[Service]
+Type=simple
+User=birdwatch
+WorkingDirectory=/opt/birdwatch
+ExecStart=/opt/birdwatch/venv/bin/python main.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
