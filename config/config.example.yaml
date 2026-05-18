@@ -1,0 +1,33 @@
+server:
+  host: 0.0.0.0
+  port: 8080
+
+location:
+  lat: 38.8977   # your latitude in decimal degrees
+  lon: -77.0365  # your longitude in decimal degrees
+
+birdnet:
+  min_confidence: 0.70   # 0.0-1.0; detections below this threshold are discarded
+  overlap: 1.5           # seconds of overlap between consecutive 3s chunks (0 to disable)
+  use_gpu: false         # set true to try TFLite OpenCL GPU delegate (falls back to CPU)
+                         # GPU requires: sudo apt install nvidia-opencl-dev ocl-icd-opencl-dev
+
+inference:
+  workers: 4             # BirdNET worker processes; recommended: 4 (CPU), 1 (GPU), 4 (mixed)
+  queue_max: 100         # max pending inference jobs before oldest are dropped
+
+cameras:
+  - id: front-yard
+    name: Front Yard
+    stream_url: rtsp://192.168.1.10:554/stream1     # standard RTSP
+    enabled: true
+  - id: back-fence
+    name: Back Fence
+    stream_url: rtsps://192.168.1.11:7441/stream1   # RTSPS / UniFi default port
+    enabled: true
+
+alerts:
+  retention_days: 90     # days to keep .wav clip files on disk (DB records kept forever)
+
+logging:
+  level: INFO            # DEBUG | INFO | WARNING | ERROR

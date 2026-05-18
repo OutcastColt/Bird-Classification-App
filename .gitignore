@@ -1,0 +1,9 @@
+data/
+logs/
+config/config.yaml
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+*.egg-info/
+*.wav
