@@ -48,7 +48,6 @@ def run_camera_worker(
     camera_id: str,
     stream_url: str,
     infer_queue: multiprocessing.Queue,
-    queue_max: int,
     overlap_seconds: float,
     lat: float,
     lon: float,
@@ -58,6 +57,10 @@ def run_camera_worker(
     """Entry point for a camera worker subprocess.
 
     Runs forever (reconnecting on failure) until stop_event is set.
+
+    Note: ``infer_queue`` must be created with ``maxsize`` equal to the
+    desired backpressure limit (e.g. ``multiprocessing.Queue(maxsize=N)``).
+    Chunks are dropped when the queue is full.
     """
     logging.basicConfig(
         level=logging.INFO,
@@ -69,7 +72,7 @@ def run_camera_worker(
     while not stop_event.is_set():
         try:
             _stream_loop(
-                camera_id, stream_url, infer_queue, queue_max,
+                camera_id, stream_url, infer_queue,
                 overlap_seconds, lat, lon, min_confidence, stop_event, logger,
             )
             backoff = 2.0  # reset after clean exit
@@ -83,7 +86,6 @@ def _stream_loop(
     camera_id: str,
     stream_url: str,
     infer_queue: multiprocessing.Queue,
-    queue_max: int,
     overlap_seconds: float,
     lat: float,
     lon: float,
@@ -92,7 +94,7 @@ def _stream_loop(
     logger: logging.Logger,
 ) -> None:
     cmd = build_ffmpeg_cmd(stream_url)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     logger.info("FFmpeg started (PID %d) for %s", proc.pid, stream_url)
 
     overlap_bytes = int(overlap_seconds * BYTES_PER_SEC)
@@ -107,7 +109,7 @@ def _stream_loop(
             buffer += data
             chunks, buffer = chunk_pcm_buffer(buffer, CHUNK_BYTES, step_bytes)
             for pcm in chunks:
-                if infer_queue.qsize() < queue_max:
+                try:
                     infer_queue.put_nowait({
                         "camera_id": camera_id,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -116,12 +118,16 @@ def _stream_loop(
                         "lon": lon,
                         "min_confidence": min_confidence,
                     })
-                else:
+                except Exception:
+                    # Queue full (requires queue created with maxsize=queue_max)
                     logger.warning(
-                        "Inference queue full (%d), dropping chunk from %s",
-                        queue_max, camera_id,
+                        "Inference queue full, dropping chunk from %s", camera_id
                     )
     finally:
         proc.terminate()
         proc.wait()
+        stderr_output = proc.stderr.read().decode(errors="replace").strip()
+        if stderr_output:
+            logger.warning("FFmpeg stderr for %s: %s", camera_id,
+                           stderr_output[:500])  # cap at 500 chars
         logger.info("FFmpeg stopped for %s", camera_id)
