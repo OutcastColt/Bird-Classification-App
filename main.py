@@ -168,6 +168,7 @@ def create_app() -> FastAPI:
 
         consumer_task.cancel()
         cleanup_task.cancel()
+        await asyncio.gather(consumer_task, cleanup_task, return_exceptions=True)
         proc_mgr.stop_all()
 
     fastapi_app = FastAPI(title="BirdWatch", lifespan=lifespan)
@@ -190,7 +191,9 @@ def create_app() -> FastAPI:
         try:
             while True:
                 await websocket.receive_text()
-        except WebSocketDisconnect:
+        except (WebSocketDisconnect, Exception):
+            pass
+        finally:
             mgr.disconnect(websocket)
 
     # Mount static files AFTER API routes so /api/* is not shadowed
