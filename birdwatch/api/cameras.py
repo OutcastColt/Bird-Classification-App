@@ -1,0 +1,45 @@
+from __future__ import annotations
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
+import birdwatch.database as dbmod
+
+router = APIRouter(prefix="/api", tags=["cameras"])
+
+
+class CameraBody(BaseModel):
+    id: str
+    name: str
+    stream_url: str
+    enabled: bool = True
+
+
+@router.get("/cameras")
+def get_cameras(request: Request):
+    cameras = dbmod.list_cameras(db_path=dbmod.DB_PATH)
+    pm = getattr(request.app.state, "process_manager", None)
+    statuses = pm.get_camera_statuses() if pm else {}
+    for cam in cameras:
+        if not cam["enabled"]:
+            cam["status"] = "disabled"
+        else:
+            cam["status"] = statuses.get(cam["id"], "starting")
+    return cameras
+
+
+@router.post("/cameras", status_code=201)
+def add_camera(body: CameraBody):
+    dbmod.upsert_camera(body.id, body.name, body.stream_url, body.enabled, dbmod.DB_PATH)
+    return {"ok": True}
+
+
+@router.put("/cameras/{camera_id}")
+def update_camera(camera_id: str, body: CameraBody):
+    dbmod.upsert_camera(camera_id, body.name, body.stream_url, body.enabled, dbmod.DB_PATH)
+    return {"ok": True}
+
+
+@router.delete("/cameras/{camera_id}")
+def remove_camera(camera_id: str):
+    if not dbmod.delete_camera(camera_id, dbmod.DB_PATH):
+        raise HTTPException(status_code=404, detail="Camera not found")
+    return {"ok": True}
