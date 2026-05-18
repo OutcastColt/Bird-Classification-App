@@ -147,6 +147,26 @@ class ProcessManager:
                     new.restart_count = entry.restart_count
                     self._workers[key] = new
 
+    def add_camera_worker(self, camera: CameraConfig) -> None:
+        """Start a worker for a camera, stopping any existing one first."""
+        self.remove_camera_worker(camera.id)
+        if camera.enabled:
+            entry = self._spawn_camera(camera)
+            self._workers[entry.key] = entry
+            self.logger.info("Started camera worker: %s", camera.id)
+
+    def remove_camera_worker(self, camera_id: str) -> None:
+        """Stop and remove a camera worker if it is running."""
+        key = f"camera:{camera_id}"
+        entry = self._workers.pop(key, None)
+        if entry is None:
+            return
+        entry.stop_event.set()
+        entry.process.join(timeout=5)
+        if entry.process.is_alive():
+            entry.process.terminate()
+        self.logger.info("Stopped camera worker: %s", camera_id)
+
     def get_camera_statuses(self) -> dict[str, str]:
         statuses: dict[str, str] = {}
         for key, entry in self._workers.items():

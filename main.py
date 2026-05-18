@@ -142,6 +142,11 @@ def create_app() -> FastAPI:
         _setup_logging(cfg.logging.level)
         init_db()
 
+        # Seed cameras from config.yaml into the database so they appear in the UI
+        for cam in cfg.cameras:
+            dbmod.upsert_camera(cam.id, cam.name, cam.stream_url, cam.enabled,
+                                db_path=dbmod.DB_PATH)
+
         ws_manager = ConnectionManager()
         alert_mgr = AlertManager()
         infer_queue: multiprocessing.Queue = multiprocessing.Queue(
