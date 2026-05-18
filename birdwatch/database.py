@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -30,7 +30,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
             );
             CREATE TABLE IF NOT EXISTS detections (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                camera_id       TEXT NOT NULL,
+                camera_id       TEXT NOT NULL REFERENCES cameras(id),
                 timestamp       TEXT NOT NULL,
                 species_common  TEXT NOT NULL,
                 species_sci     TEXT NOT NULL,
@@ -116,7 +116,7 @@ def list_detections(
 
 
 def get_detection_summary(db_path: Path = DB_PATH) -> dict:
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     with get_connection(db_path) as conn:
         total = conn.execute("SELECT COUNT(*) FROM detections").fetchone()[0]
         today_count = conn.execute(

@@ -10,6 +10,7 @@ from birdwatch.database import (
 def db(tmp_path):
     path = tmp_path / "test.db"
     init_db(path)
+    upsert_camera("cam1", "Camera 1", "rtsp://192.168.1.10/s1", True, path)
     return path
 
 def test_init_db_idempotent(db):
@@ -29,6 +30,7 @@ def test_insert_and_list_detection(db):
     assert rows[0]["species_common"] == "Robin"
 
 def test_list_detections_filter_camera(db):
+    upsert_camera("cam2", "Camera 2", "rtsp://192.168.1.11/s1", True, db)
     for cam in ["cam1", "cam2"]:
         insert_detection(Detection(
             camera_id=cam, timestamp="2026-05-18T10:00:00",
