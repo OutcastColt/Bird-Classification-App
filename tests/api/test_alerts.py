@@ -44,3 +44,13 @@ def test_alert_rule_crud(app):
 def test_delete_nonexistent_rule(app):
     r = TestClient(app).delete("/api/alerts/rules/9999")
     assert r.status_code == 404
+
+def test_update_nonexistent_rule(app):
+    r = TestClient(app).put("/api/alerts/rules/9999", json={
+        "method": "webhook",
+        "config": {"url": "https://example.com"},
+        "min_confidence": 0.70,
+        "cooldown_mins": 10,
+        "enabled": True,
+    })
+    assert r.status_code == 404

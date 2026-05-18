@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ServerConfig(BaseModel):
@@ -10,17 +10,20 @@ class ServerConfig(BaseModel):
 
 
 class LocationConfig(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
     lat: float
     lon: float
 
 
 class BirdnetConfig(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
     min_confidence: float = Field(default=0.70, ge=0.0, le=1.0)
     overlap: float = Field(default=1.5, ge=0.0, lt=3.0)
     use_gpu: bool = False
 
 
 class InferenceConfig(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
     workers: int = Field(default=4, ge=1)
     queue_max: int = Field(default=100, ge=10)
 

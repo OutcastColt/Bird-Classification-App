@@ -9,16 +9,16 @@ CLIPS_ROOT = Path("data/clips").resolve()
 
 @router.get("/clips/{clip_path:path}")
 def serve_clip(clip_path: str):
-    # Resolve and validate path stays within data/clips/
     full = Path(clip_path)
     if not full.is_absolute():
-        full = Path("data/clips") / clip_path
+        full = CLIPS_ROOT / clip_path
+    resolved = full.resolve()
     try:
-        full.resolve().relative_to(CLIPS_ROOT)
+        resolved.relative_to(CLIPS_ROOT)
     except ValueError:
         raise HTTPException(status_code=403, detail="Forbidden")
-    if not full.exists():
+    if not resolved.exists():
         raise HTTPException(status_code=404, detail="Clip not found")
-    if full.suffix.lower() != ".wav":
+    if resolved.suffix.lower() != ".wav":
         raise HTTPException(status_code=400, detail="Not a WAV file")
-    return FileResponse(str(full), media_type="audio/wav")
+    return FileResponse(str(resolved), media_type="audio/wav")
