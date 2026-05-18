@@ -140,6 +140,13 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         cfg = load_config()
         _setup_logging(cfg.logging.level)
+
+        if not shutil.which("ffmpeg"):
+            logging.getLogger("startup").error(
+                "ffmpeg not found in PATH. Install it with: "
+                "sudo apt install -y ffmpeg"
+            )
+
         init_db()
 
         # Seed cameras from config.yaml into the database so they appear in the UI
