@@ -1,4 +1,201 @@
 <!DOCTYPE html>
-<html><head><title>BirdWatch</title></head>
-<body><p>Dashboard loading... (Task 10 will replace this)</p></body>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BirdWatch</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body x-data="dashboard" x-init="init()">
+
+<header>
+  <h1>BirdWatch</h1>
+  <nav>
+    <button :class="tab==='live'?'active':''"     @click="tab='live'">Live</button>
+    <button :class="tab==='history'?'active':''"  @click="tab='history'; loadHistory()">History</button>
+    <button :class="tab==='cameras'?'active':''"  @click="tab='cameras'">Cameras</button>
+    <button :class="tab==='settings'?'active':''" @click="tab='settings'">Settings</button>
+  </nav>
+  <span style="margin-left:auto;font-size:.75rem;color:#718096">
+    WS: <span :style="wsConnected?'color:#68d391':'color:#fc8181'"
+              x-text="wsConnected?'connected':'reconnecting'"></span>
+  </span>
+</header>
+
+<main>
+
+  <!-- LIVE -->
+  <template x-if="tab==='live'">
+    <div>
+      <div class="card">
+        <h2>Camera Status</h2>
+        <div class="cam-grid">
+          <template x-for="[id, status] in Object.entries(cameraStatuses)" :key="id">
+            <span class="cam-badge" :class="cameraStatusClass(status)">
+              <span x-text="id"></span> &bull; <span x-text="status"></span>
+            </span>
+          </template>
+          <span x-show="Object.keys(cameraStatuses).length===0" style="color:#718096;font-size:.85rem">
+            No cameras connected
+          </span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Recent Detections</h2>
+        <template x-for="det in liveDetections" :key="det.timestamp+det.camera_id+det.species_common">
+          <div class="detection-row">
+            <span class="conf-badge" x-text="formatConf(det.confidence)"></span>
+            <span class="species" x-text="det.species_common"></span>
+            <span class="cam-label" x-text="det.camera_id"></span>
+            <span class="time-label" x-text="formatTime(det.timestamp)"></span>
+            <button class="play-btn" @click="playClip(det.clip_path)">&#9654; Play</button>
+          </div>
+        </template>
+        <p x-show="liveDetections.length===0" style="color:#718096;font-size:.85rem;padding:.5rem 0">
+          Waiting for detections...
+        </p>
+      </div>
+    </div>
+  </template>
+
+  <!-- HISTORY -->
+  <template x-if="tab==='history'">
+    <div>
+      <div class="card">
+        <h2>Filter</h2>
+        <div class="form-row">
+          <label>Camera ID<input x-model="histFilter.camera_id" placeholder="all cameras"></label>
+          <label>Species<input x-model="histFilter.species" placeholder="e.g. Robin"></label>
+          <label>From<input type="date" x-model="histFilter.date_from"></label>
+          <label>To<input type="date" x-model="histFilter.date_to"></label>
+          <button class="btn" style="align-self:flex-end" @click="histPage=0;loadHistory()">Search</button>
+        </div>
+      </div>
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th><th>Species</th><th>Confidence</th><th>Camera</th><th>Clip</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="row in historyRows" :key="row.id">
+              <tr>
+                <td x-text="formatTime(row.timestamp)"></td>
+                <td x-text="row.species_common"></td>
+                <td x-text="formatConf(row.confidence)"></td>
+                <td x-text="row.camera_id"></td>
+                <td><button class="play-btn" @click="playClip(row.clip_path)">&#9654;</button></td>
+              </tr>
+            </template>
+            <tr x-show="historyRows.length===0">
+              <td colspan="5" style="color:#718096;text-align:center;padding:1rem">No detections found</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pagination">
+          <button @click="histPrev()" :disabled="histPage===0">Prev</button>
+          <span style="padding:.3rem .5rem;font-size:.85rem" x-text="'Page '+(histPage+1)"></span>
+          <button @click="histNext()" :disabled="historyRows.length < histLimit">Next</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- CAMERAS -->
+  <template x-if="tab==='cameras'">
+    <div>
+      <div class="card">
+        <h2>Add Camera</h2>
+        <div x-show="camSaved" class="alert-success">Camera saved.</div>
+        <div class="form-row">
+          <label>ID (slug)<input x-model="newCam.id" placeholder="front-yard"></label>
+          <label>Display Name<input x-model="newCam.name" placeholder="Front Yard"></label>
+          <label>Stream URL<input x-model="newCam.stream_url" placeholder="rtsp:// or rtsps://" style="min-width:300px"></label>
+          <label style="justify-content:flex-end">
+            Enabled
+            <input type="checkbox" x-model="newCam.enabled" style="min-width:auto;width:auto">
+          </label>
+          <button class="btn" style="align-self:flex-end" @click="saveCamera()">Add / Update</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Configured Cameras</h2>
+        <table>
+          <thead><tr><th>ID</th><th>Name</th><th>URL</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            <template x-for="cam in cameras" :key="cam.id">
+              <tr>
+                <td x-text="cam.id"></td>
+                <td x-text="cam.name"></td>
+                <td style="font-size:.8rem;color:#a0aec0" x-text="cam.stream_url"></td>
+                <td><span class="cam-badge" :class="cameraStatusClass(cam.status)" x-text="cam.status"></span></td>
+                <td><button class="btn danger" @click="deleteCamera(cam.id)">Delete</button></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </template>
+
+  <!-- SETTINGS -->
+  <template x-if="tab==='settings'">
+    <div>
+      <div class="card">
+        <h2>Location &amp; BirdNET</h2>
+        <div x-show="settingsSaved" class="alert-success">Settings saved.</div>
+        <div class="form-row">
+          <label>Latitude<input type="number" step="0.0001" x-model.number="settings.lat"></label>
+          <label>Longitude<input type="number" step="0.0001" x-model.number="settings.lon"></label>
+          <label>Min Confidence (0-1)<input type="number" step="0.01" min="0" max="1" x-model.number="settings.min_confidence"></label>
+          <label>Overlap (seconds)<input type="number" step="0.5" min="0" max="2.9" x-model.number="settings.overlap"></label>
+          <label>Inference Workers<input type="number" min="1" max="16" x-model.number="settings.workers"></label>
+          <label style="justify-content:flex-end">
+            Use GPU
+            <input type="checkbox" x-model="settings.use_gpu" style="min-width:auto;width:auto">
+          </label>
+        </div>
+        <button class="btn" @click="saveSettings()">Save Settings</button>
+      </div>
+      <div class="card">
+        <h2>Alert Rules</h2>
+        <div x-show="ruleSaved" class="alert-success">Rule saved.</div>
+        <div class="form-row">
+          <label>Species filter (blank = all)<input x-model="newRule.species_filter" placeholder="Northern Cardinal"></label>
+          <label>Min confidence<input type="number" step="0.01" min="0" max="1" x-model.number="newRule.min_confidence"></label>
+          <label>Method
+            <select x-model="newRule.method">
+              <option value="webhook">Webhook</option>
+              <option value="email">Email</option>
+              <option value="pushover">Pushover</option>
+            </select>
+          </label>
+          <label>Config JSON<input x-model="newRule.config" placeholder='{"url":"https://..."}' style="min-width:300px"></label>
+          <label>Cooldown (mins)<input type="number" min="1" x-model.number="newRule.cooldown_mins"></label>
+          <button class="btn" style="align-self:flex-end" @click="saveRule()">Add Rule</button>
+        </div>
+        <table>
+          <thead><tr><th>Species</th><th>Confidence</th><th>Method</th><th>Cooldown</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            <template x-for="rule in alertRules" :key="rule.id">
+              <tr>
+                <td x-text="rule.species_filter || 'All species'"></td>
+                <td x-text="formatConf(rule.min_confidence)"></td>
+                <td x-text="rule.method"></td>
+                <td x-text="rule.cooldown_mins + ' min'"></td>
+                <td x-text="rule.enabled ? 'Enabled' : 'Disabled'"></td>
+                <td><button class="btn danger" @click="deleteRule(rule.id)">Delete</button></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </template>
+
+</main>
+</body>
 </html>
