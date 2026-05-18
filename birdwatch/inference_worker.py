@@ -62,10 +62,17 @@ def _create_analyzer(use_gpu: bool, worker_index: int):
         try:
             import tflite_runtime.interpreter as tflite
             tflite.load_delegate("libOpenCL.so")
-            logging.getLogger("inference").info("GPU delegate loaded for worker 0")
+            # Note: birdnetlib does not expose a way to inject a custom TFLite
+            # interpreter, so the delegate is loaded as a verification check only.
+            # Full GPU inference requires patching birdnetlib internals or upgrading
+            # to a version that exposes interpreter injection.
+            logging.getLogger("inference").info(
+                "OpenCL GPU delegate available (CPU inference still used — "
+                "birdnetlib does not yet support custom interpreter injection)"
+            )
         except Exception as exc:
             logging.getLogger("inference").warning(
-                "GPU delegate unavailable (%s); using CPU for all workers", exc
+                "GPU delegate unavailable (%s); using CPU", exc
             )
     return Analyzer()
 
@@ -95,54 +102,59 @@ def run_inference_worker(
 
     from birdnetlib import Recording  # deferred import
 
-    while not stop_event.is_set():
-        try:
-            job = infer_queue.get(timeout=1.0)
-        except Exception:
-            continue
-
-        tmp_wav = None
-        try:
-            tmp_wav = pcm_to_wav_file(job["pcm_bytes"], tmp_dir)
-            recording = Recording(
-                analyzer,
-                tmp_wav,
-                lat=job["lat"],
-                lon=job["lon"],
-                min_conf=job["min_confidence"],
-                date=datetime.fromisoformat(
-                    job["timestamp"].replace("Z", "+00:00")
-                ),
-            )
-            recording.analyze()
-
-            if not recording.detections:
+    try:
+        while not stop_event.is_set():
+            try:
+                job = infer_queue.get(timeout=1.0)
+            except Exception:
                 continue
 
-            # Save one clip file per chunk (named after first detected species)
-            first = recording.detections[0]
-            dest = build_clip_path(
-                job["camera_id"],
-                job["timestamp"],
-                first["common_name"],
-                first["confidence"],
-            )
-            save_clip(job["pcm_bytes"], dest)
+            tmp_wav = None
+            try:
+                tmp_wav = pcm_to_wav_file(job["pcm_bytes"], tmp_dir)
+                recording = Recording(
+                    analyzer,
+                    tmp_wav,
+                    lat=job["lat"],
+                    lon=job["lon"],
+                    min_conf=job["min_confidence"],
+                    date=datetime.fromisoformat(
+                        job["timestamp"].replace("Z", "+00:00")
+                    ),
+                )
+                recording.analyze()
 
-            for det in recording.detections:
-                result_queue.put({
-                    "camera_id": job["camera_id"],
-                    "timestamp": job["timestamp"],
-                    "species_common": det["common_name"],
-                    "species_sci": det["scientific_name"],
-                    "confidence": round(det["confidence"], 4),
-                    "clip_path": dest,
-                    "lat": job["lat"],
-                    "lon": job["lon"],
-                })
+                if not recording.detections:
+                    continue
 
-        except Exception as exc:
-            logger.error("Inference error: %s", exc)
-        finally:
-            if tmp_wav and os.path.exists(tmp_wav):
-                os.unlink(tmp_wav)
+                # Save one clip file per chunk (named after first detected species)
+                first = recording.detections[0]
+                dest = build_clip_path(
+                    job["camera_id"],
+                    job["timestamp"],
+                    first["common_name"],
+                    first["confidence"],
+                )
+                save_clip(job["pcm_bytes"], dest)
+
+                for det in recording.detections:
+                    result_queue.put({
+                        "camera_id": job["camera_id"],
+                        "timestamp": job["timestamp"],
+                        "species_common": det["common_name"],
+                        "species_sci": det["scientific_name"],
+                        "confidence": round(det["confidence"], 4),
+                        "clip_path": dest,
+                        "lat": job["lat"],
+                        "lon": job["lon"],
+                    })
+
+            except Exception as exc:
+                logger.error("Inference error: %s", exc)
+            finally:
+                if tmp_wav and os.path.exists(tmp_wav):
+                    os.unlink(tmp_wav)
+    finally:
+        import shutil
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        logger.info("Inference worker %d cleaned up tmp dir", worker_index)
