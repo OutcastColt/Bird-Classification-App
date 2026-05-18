@@ -1,5 +1,5 @@
 server:
-  host: 0.0.0.0
+  host: 0.0.0.0  # WARNING: binds to all interfaces — exposes dashboard to LAN; use 127.0.0.1 for localhost only
   port: 8080
 
 location:
