@@ -34,6 +34,11 @@ def add_camera(body: CameraBody):
 
 @router.put("/cameras/{camera_id}")
 def update_camera(camera_id: str, body: CameraBody):
+    if body.id != camera_id:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Body id '{body.id}' does not match path camera_id '{camera_id}'",
+        )
     dbmod.upsert_camera(camera_id, body.name, body.stream_url, body.enabled, dbmod.DB_PATH)
     return {"ok": True}
 

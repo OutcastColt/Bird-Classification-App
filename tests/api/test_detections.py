@@ -46,3 +46,19 @@ def test_get_summary(app):
     assert "total" in body
     assert "today" in body
     assert "top_species" in body
+
+
+def test_get_detections_filter_date(app):
+    # The fixture inserts a detection at 2026-05-18T10:00:00
+    # Querying with date_from after that timestamp should return nothing
+    r = TestClient(app).get("/api/detections?date_from=2026-05-19T00:00:00")
+    assert r.status_code == 200
+    assert r.json() == []
+    # Querying with date_to before that timestamp should return nothing
+    r2 = TestClient(app).get("/api/detections?date_to=2026-05-17T23:59:59")
+    assert r2.status_code == 200
+    assert r2.json() == []
+    # Querying within the date range should return the detection
+    r3 = TestClient(app).get("/api/detections?date_from=2026-05-18T00:00:00&date_to=2026-05-18T23:59:59")
+    assert r3.status_code == 200
+    assert len(r3.json()) == 1
