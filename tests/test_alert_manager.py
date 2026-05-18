@@ -77,3 +77,18 @@ async def test_disabled_rule_does_not_fire():
     mgr._dispatch_webhook = lambda p, c: dispatched.append(p)
     await mgr.check_and_dispatch(DETECTION, [rule], "Front Yard", "http://localhost:8080")
     assert dispatched == []
+
+@pytest.mark.asyncio
+async def test_cooldown_expires_and_refires():
+    mgr = AlertManager()
+    dispatched = []
+    rule = {**WEBHOOK_RULE, "cooldown_mins": 1}
+    mgr._dispatch_webhook = lambda p, c: dispatched.append(p)
+    # First dispatch fires and sets cooldown
+    await mgr.check_and_dispatch(DETECTION, [rule], "Front Yard", "http://localhost:8080")
+    assert len(dispatched) == 1
+    # Simulate cooldown expiry by backdating the timestamp by 61 seconds
+    mgr._cooldowns[("front-yard", "Northern Cardinal")] = time.monotonic() - 61
+    # Second dispatch should fire again
+    await mgr.check_and_dispatch(DETECTION, [rule], "Front Yard", "http://localhost:8080")
+    assert len(dispatched) == 2

@@ -41,8 +41,6 @@ class AlertManager:
             cooldown = rule.get("cooldown_mins", 10)
             if self._on_cooldown(detection["camera_id"], detection["species_common"], cooldown):
                 continue
-            self._set_cooldown(detection["camera_id"], detection["species_common"])
-
             payload = {
                 "camera": camera_name,
                 "camera_id": detection["camera_id"],
@@ -56,14 +54,22 @@ class AlertManager:
             if isinstance(config, str):
                 config = json.loads(config)
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 method = rule["method"]
+                dispatched = False
                 if method == "email":
                     await loop.run_in_executor(None, self._dispatch_email, payload, config)
+                    dispatched = True
                 elif method == "webhook":
                     await loop.run_in_executor(None, self._dispatch_webhook, payload, config)
+                    dispatched = True
                 elif method == "pushover":
                     await loop.run_in_executor(None, self._dispatch_pushover, payload, config)
+                    dispatched = True
+                else:
+                    self.logger.warning("Unknown alert method: %s", method)
+                if dispatched:
+                    self._set_cooldown(detection["camera_id"], detection["species_common"])
             except Exception as exc:
                 self.logger.error("Alert dispatch (%s) failed: %s", rule["method"], exc)
 
