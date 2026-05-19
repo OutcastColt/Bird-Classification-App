@@ -19,6 +19,7 @@ document.addEventListener('alpine:init', () => {
     // Cameras
     cameras: [],
     newCam: { id: '', name: '', stream_url: '', enabled: true },
+    editingCam: false,
     camSaved: false,
 
     // Settings
@@ -93,22 +94,37 @@ document.addEventListener('alpine:init', () => {
     },
 
     async saveCamera() {
-      const r = await fetch('/api/cameras', {
-        method: 'POST',
+      const url = this.editingCam ? `/api/cameras/${this.newCam.id}` : '/api/cameras';
+      const method = this.editingCam ? 'PUT' : 'POST';
+      const r = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(this.newCam),
       });
       if (r.ok) {
         this.newCam = { id: '', name: '', stream_url: '', enabled: true };
+        this.editingCam = false;
         this.camSaved = true;
         await this.loadCameras();
         setTimeout(() => { this.camSaved = false; }, 3000);
       }
     },
 
+    editCamera(cam) {
+      this.newCam = { id: cam.id, name: cam.name, stream_url: cam.stream_url, enabled: !!cam.enabled };
+      this.editingCam = true;
+      document.getElementById('camera-form').scrollIntoView({ behavior: 'smooth' });
+    },
+
+    cancelEdit() {
+      this.newCam = { id: '', name: '', stream_url: '', enabled: true };
+      this.editingCam = false;
+    },
+
     async deleteCamera(id) {
       if (!confirm(`Delete camera ${id}?`)) return;
       await fetch(`/api/cameras/${id}`, { method: 'DELETE' });
+      if (this.editingCam && this.newCam.id === id) this.cancelEdit();
       await this.loadCameras();
     },
 

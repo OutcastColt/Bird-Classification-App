@@ -107,18 +107,24 @@
   <!-- CAMERAS -->
   <template x-if="tab==='cameras'">
     <div>
-      <div class="card">
-        <h2>Add Camera</h2>
+      <div class="card" id="camera-form">
+        <h2 x-text="editingCam ? 'Edit Camera' : 'Add Camera'"></h2>
         <div x-show="camSaved" class="alert-success">Camera saved.</div>
         <div class="form-row">
-          <label>ID (slug)<input x-model="newCam.id" placeholder="front-yard"></label>
+          <label>ID (slug)
+            <input x-model="newCam.id" placeholder="front-yard"
+                   :readonly="editingCam" :style="editingCam ? 'opacity:.5;cursor:not-allowed' : ''">
+          </label>
           <label>Display Name<input x-model="newCam.name" placeholder="Front Yard"></label>
           <label>Stream URL<input x-model="newCam.stream_url" placeholder="rtsp:// or rtsps://" style="min-width:300px"></label>
           <label style="justify-content:flex-end">
             Enabled
             <input type="checkbox" x-model="newCam.enabled" style="min-width:auto;width:auto">
           </label>
-          <button class="btn" style="align-self:flex-end" @click="saveCamera()">Add / Update</button>
+          <button class="btn" style="align-self:flex-end" @click="saveCamera()"
+                  x-text="editingCam ? 'Update Camera' : 'Add Camera'"></button>
+          <button x-show="editingCam" class="btn" style="align-self:flex-end;background:#4a5568"
+                  @click="cancelEdit()">Cancel</button>
         </div>
       </div>
       <div class="card">
@@ -132,7 +138,10 @@
                 <td x-text="cam.name"></td>
                 <td style="font-size:.8rem;color:#a0aec0" x-text="cam.stream_url"></td>
                 <td><span class="cam-badge" :class="cameraStatusClass(cam.status)" x-text="cam.status"></span></td>
-                <td><button class="btn danger" @click="deleteCamera(cam.id)">Delete</button></td>
+                <td style="display:flex;gap:.4rem;padding:.45rem .75rem">
+                  <button class="btn" style="background:#2b6cb0" @click="editCamera(cam)">Edit</button>
+                  <button class="btn danger" @click="deleteCamera(cam.id)">Delete</button>
+                </td>
               </tr>
             </template>
           </tbody>
