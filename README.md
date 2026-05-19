@@ -63,6 +63,27 @@ support Kepler, but the TFLite OpenCL delegate is available. To enable:
 
 BirdWatch automatically falls back to CPU if the OpenCL delegate is unavailable.
 
+## HTTPS Setup (recommended)
+
+Serving over HTTPS avoids browser security warnings when the dashboard makes
+requests to external APIs (Wikipedia, iNaturalist). The setup script installs
+**nginx** as a reverse proxy and generates a self-signed TLS certificate.
+
+    sudo bash scripts/setup_https.sh
+
+The script:
+- Installs nginx
+- Generates a 10-year self-signed certificate for the server's LAN IP
+- Configures nginx to proxy HTTPS (port 443) to BirdWatch (port 8080)
+- Redirects HTTP (port 80) to HTTPS automatically
+- Opens ufw firewall ports 80 and 443
+
+After running, open `https://<server-ip>/` instead of `http://<server-ip>:8080/`.
+
+**Trusting the certificate on your LAN devices** removes the browser warning.
+The script prints exact instructions for Windows, macOS, Android, and Linux,
+or you can download the certificate directly from `https://<server-ip>/birdwatch-ca.crt`.
+
 ## Running
 
 ### As a systemd service (recommended for 24/7 operation)
