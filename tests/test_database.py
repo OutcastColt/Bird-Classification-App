@@ -21,7 +21,7 @@ def test_insert_and_list_detection(db):
         camera_id="cam1", timestamp="2026-05-18T10:00:00",
         species_common="Robin", species_sci="Turdus migratorius",
         confidence=0.85, clip_path="data/clips/cam1/clip.wav",
-        lat=38.89, lon=-77.03,
+        lat=40.71, lon=-74.00,
     )
     det_id = insert_detection(det, db)
     assert isinstance(det_id, int)
@@ -36,7 +36,7 @@ def test_list_detections_filter_camera(db):
             camera_id=cam, timestamp="2026-05-18T10:00:00",
             species_common="Robin", species_sci="Turdus migratorius",
             confidence=0.9, clip_path=f"data/clips/{cam}/clip.wav",
-            lat=38.89, lon=-77.03,
+            lat=40.71, lon=-74.00,
         ), db)
     rows = list_detections(db_path=db, camera_id="cam1")
     assert all(r["camera_id"] == "cam1" for r in rows)
@@ -47,7 +47,7 @@ def test_detection_summary(db):
         camera_id="cam1", timestamp="2026-05-18T10:00:00",
         species_common="Robin", species_sci="Turdus migratorius",
         confidence=0.9, clip_path="data/clips/cam1/clip.wav",
-        lat=38.89, lon=-77.03,
+        lat=40.71, lon=-74.00,
     ), db)
     summary = get_detection_summary(db)
     assert summary["total"] == 1

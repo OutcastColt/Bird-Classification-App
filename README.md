@@ -186,15 +186,15 @@ Expected output:
 To test with a real bird recording and your own coordinates:
 
     sudo -u birdwatch venv/bin/python scripts/test_birdnet.py \
-      --audio /path/to/bird.wav --lat 38.89 --lon -77.03
+      --audio /path/to/bird.wav --lat 40.71 --lon -74.00
 
 **Options:**
 
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--audio <path>` | Use a local audio file for real species detection | (generates synthetic tone) |
-| `--lat <float>` | Latitude for species filtering | 38.89 |
-| `--lon <float>` | Longitude for species filtering | -77.03 |
+| `--lat <float>` | Latitude for species filtering | 40.71 |
+| `--lon <float>` | Longitude for species filtering | -74.00 |
 | `--conf <float>` | Minimum confidence threshold | 0.10 |
 
 **Troubleshooting:**

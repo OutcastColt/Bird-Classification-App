@@ -1,0 +1,89 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-18-birdwatch.md",
+  "tasks": [
+    {
+      "id": 0,
+      "subject": "Task 0: Project Scaffold",
+      "status": "completed",
+      "description": "**Goal:** Create directory structure, dependency files, .gitignore, and example config.\n\n**Verify:** `pytest tests/ --collect-only` -> exits 0\n\n```json:metadata\n{\"files\": [\"birdwatch/__init__.py\", \"birdwatch/api/__init__.py\", \"tests/__init__.py\", \"requirements.txt\", \"requirements-dev.txt\", \".gitignore\", \"config/config.example.yaml\"], \"verifyCommand\": \"pytest tests/ --collect-only\", \"acceptanceCriteria\": [\"pip install completes\", \"pytest collects without import errors\", \"config.example.yaml is valid YAML\"]}\n```"
+    },
+    {
+      "id": 1,
+      "subject": "Task 1: Config Model",
+      "status": "completed",
+      "blockedBy": [0],
+      "description": "**Goal:** Pydantic config models + load_config() with validation.\n\n**Files:** `birdwatch/config.py`, `tests/test_config.py`\n\n**Verify:** `pytest tests/test_config.py -v` -> `5 passed`\n\n```json:metadata\n{\"files\": [\"birdwatch/config.py\", \"tests/test_config.py\"], \"verifyCommand\": \"pytest tests/test_config.py -v\", \"acceptanceCriteria\": [\"load_config parses valid YAML\", \"invalid confidence raises ValidationError\", \"invalid log level raises ValidationError\", \"missing location raises ValidationError\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Database Layer",
+      "status": "completed",
+      "blockedBy": [0],
+      "description": "**Goal:** SQLite schema (WAL), CRUD helpers for cameras/detections/alert_rules.\n\n**Files:** `birdwatch/database.py`, `tests/test_database.py`\n\n**Verify:** `pytest tests/test_database.py -v` -> `8 passed`\n\n```json:metadata\n{\"files\": [\"birdwatch/database.py\", \"tests/test_database.py\"], \"verifyCommand\": \"pytest tests/test_database.py -v\", \"acceptanceCriteria\": [\"init_db idempotent\", \"insert_detection returns int ID\", \"list_detections filters work\", \"camera CRUD round-trips\", \"alert_rule CRUD round-trips\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Camera Worker",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** FFmpeg RTSP/RTSPS audio capture, PCM chunking with overlap, backpressure, reconnect.\n\n**Files:** `birdwatch/camera_worker.py`, `tests/test_camera_worker.py`\n\n**Verify:** `pytest tests/test_camera_worker.py -v` -> `5 passed`\n\n```json:metadata\n{\"files\": [\"birdwatch/camera_worker.py\", \"tests/test_camera_worker.py\"], \"verifyCommand\": \"pytest tests/test_camera_worker.py -v\", \"acceptanceCriteria\": [\"chunk_pcm_buffer splits correctly\", \"RTSPS URL adds -tls_verify 0\", \"RTSP URL has no -tls_verify\", \"backpressure drops chunks when queue full\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Inference Worker",
+      "status": "completed",
+      "blockedBy": [2],
+      "description": "**Goal:** birdnetlib integration, PCM-to-WAV, analyze, save clips, push results.\n\n**Files:** `birdwatch/inference_worker.py`, `tests/test_inference_worker.py`\n\n**Verify:** `pytest tests/test_inference_worker.py -v` -> `5 passed`\n\n```json:metadata\n{\"files\": [\"birdwatch/inference_worker.py\", \"tests/test_inference_worker.py\"], \"verifyCommand\": \"pytest tests/test_inference_worker.py -v\", \"acceptanceCriteria\": [\"pcm_to_wav_file produces valid WAV\", \"build_clip_path returns correct path\", \"save_clip creates parent dirs\", \"slug handles apostrophes\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Alert Manager",
+      "status": "completed",
+      "blockedBy": [2],
+      "description": "**Goal:** Rule matching, cooldown enforcement, email/webhook/pushover dispatch.\n\n**Files:** `birdwatch/alert_manager.py`, `tests/test_alert_manager.py`\n\n**Verify:** `pytest tests/test_alert_manager.py -v` -> `6 passed`\n\n```json:metadata\n{\"files\": [\"birdwatch/alert_manager.py\", \"tests/test_alert_manager.py\"], \"verifyCommand\": \"pytest tests/test_alert_manager.py -v\", \"acceptanceCriteria\": [\"null species_filter matches all\", \"species filter only fires for matching species\", \"confidence below threshold does not fire\", \"cooldown suppresses second detection\", \"disabled rule does not fire\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Process Manager",
+      "status": "completed",
+      "blockedBy": [3, 4],
+      "description": "**Goal:** Spawn/supervise camera and inference worker subprocesses, heartbeat, auto-restart.\n\n**Files:** `birdwatch/process_manager.py`\n\n**Verify:** `python -c \"from birdwatch.process_manager import ProcessManager; print('ok')\"` -> `ok`\n\n```json:metadata\n{\"files\": [\"birdwatch/process_manager.py\"], \"verifyCommand\": \"python3 -c \\\"from birdwatch.process_manager import ProcessManager; print('ok')\\\"\", \"acceptanceCriteria\": [\"start_all spawns workers\", \"get_camera_statuses returns status per camera\", \"stop_all joins all processes\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: REST API — Detections & Cameras",
+      "status": "completed",
+      "blockedBy": [2],
+      "description": "**Goal:** GET /api/detections, GET /api/detections/summary, CRUD /api/cameras.\n\n**Files:** `birdwatch/api/detections.py`, `birdwatch/api/cameras.py`, tests\n\n**Verify:** `pytest tests/api/test_detections.py tests/api/test_cameras.py -v` -> `8 passed`\n\n```json:metadata\n{\"files\": [\"birdwatch/api/detections.py\", \"birdwatch/api/cameras.py\", \"tests/api/test_detections.py\", \"tests/api/test_cameras.py\"], \"verifyCommand\": \"pytest tests/api/test_detections.py tests/api/test_cameras.py -v\", \"acceptanceCriteria\": [\"GET /api/detections returns list with filters\", \"GET /api/detections/summary returns counts\", \"POST /api/cameras returns 201\", \"DELETE /api/cameras/{id} returns 404 for unknown\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: REST API — Settings, Alerts & Clips",
+      "status": "completed",
+      "blockedBy": [2],
+      "description": "**Goal:** GET/PUT /api/settings, CRUD /api/alerts/rules, GET /api/clips/{path}.\n\n**Files:** `birdwatch/api/settings.py`, `birdwatch/api/alerts.py`, `birdwatch/api/clips.py`, tests\n\n**Verify:** `pytest tests/api/test_settings.py tests/api/test_alerts.py -v` -> `6 passed`\n\n```json:metadata\n{\"files\": [\"birdwatch/api/settings.py\", \"birdwatch/api/alerts.py\", \"birdwatch/api/clips.py\", \"tests/api/test_settings.py\", \"tests/api/test_alerts.py\"], \"verifyCommand\": \"pytest tests/api/test_settings.py tests/api/test_alerts.py -v\", \"acceptanceCriteria\": [\"GET /api/settings returns lat/lon/confidence\", \"PUT /api/settings updates in memory\", \"alert rule CRUD round-trips\", \"GET /api/clips blocks path traversal\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Main Entrypoint & WebSocket",
+      "status": "completed",
+      "blockedBy": [5, 6, 7, 8],
+      "description": "**Goal:** FastAPI app, lifespan wiring, WebSocket /ws/detections, result_queue consumer, graceful shutdown.\n\n**Files:** `main.py`\n\n**Verify:** `python3 -c \"from main import create_app; print('ok')\"` -> `ok`\n\n```json:metadata\n{\"files\": [\"main.py\"], \"verifyCommand\": \"python3 -c \\\"from main import create_app; print('ok')\\\"\", \"acceptanceCriteria\": [\"app starts without errors\", \"GET /api/detections returns 200\", \"WS /ws/detections accepts connection\", \"SIGTERM triggers graceful shutdown\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Dashboard Frontend",
+      "status": "completed",
+      "blockedBy": [9],
+      "description": "**Goal:** Tab-based SPA with Live/History/Cameras/Settings tabs. Alpine.js + HTMX, no build step.\n\n**Files:** `birdwatch/static/index.html`, `birdwatch/static/app.js`, `birdwatch/static/style.css`\n\n**Verify:** Manual — open http://<server>:8080/ in browser\n\n```json:metadata\n{\"files\": [\"birdwatch/static/index.html\", \"birdwatch/static/app.js\", \"birdwatch/static/style.css\"], \"verifyCommand\": \"manual browser test\", \"acceptanceCriteria\": [\"all tabs load without console errors\", \"live tab updates via WebSocket\", \"history tab loads and filters detections\", \"cameras tab add/remove works\", \"settings tab reads and writes config\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: Systemd Service & README",
+      "status": "completed",
+      "blockedBy": [9],
+      "description": "**Goal:** systemd unit file for 24/7 operation and full README.\n\n**Files:** `birdwatch.service`, `README.md`\n\n**Verify:** `sudo systemctl status birdwatch` -> `active (running)`\n\n```json:metadata\n{\"files\": [\"birdwatch.service\", \"README.md\"], \"verifyCommand\": \"systemctl status birdwatch\", \"acceptanceCriteria\": [\"service starts with systemctl start\", \"service enables on boot\", \"logs appear in journald\", \"README covers install/config/run/upgrade\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-18T01:00:00Z"
+}

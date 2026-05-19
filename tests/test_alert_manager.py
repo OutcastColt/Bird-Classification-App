@@ -10,8 +10,8 @@ DETECTION = {
     "species_sci": "Cardinalis cardinalis",
     "confidence": 0.91,
     "clip_path": "data/clips/front-yard/2026-05-18/clip.wav",
-    "lat": 38.89,
-    "lon": -77.03,
+    "lat": 40.71,
+    "lon": -74.00,
 }
 
 WEBHOOK_RULE = {

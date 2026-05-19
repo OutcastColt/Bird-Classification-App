@@ -16,8 +16,8 @@ Usage:
 
 Optional arguments:
     --audio <path>   Use a local audio file instead of the synthetic tone
-    --lat <float>    Latitude for species filtering (default: 38.89)
-    --lon <float>    Longitude for species filtering (default: -77.03)
+    --lat <float>    Latitude for species filtering (default: 40.71)
+    --lon <float>    Longitude for species filtering (default: -74.00)
     --conf <float>   Minimum confidence threshold (default: 0.10)
 """
 
@@ -129,8 +129,8 @@ def run_test(audio_path: str, lat: float, lon: float, min_conf: float,
 def main() -> None:
     parser = argparse.ArgumentParser(description="Test BirdNET installation")
     parser.add_argument("--audio", help="Path to a local audio file for real detection test")
-    parser.add_argument("--lat",  type=float, default=38.89, help="Latitude (default: 38.89)")
-    parser.add_argument("--lon",  type=float, default=-77.03, help="Longitude (default: -77.03)")
+    parser.add_argument("--lat",  type=float, default=40.71, help="Latitude (default: 40.71)")
+    parser.add_argument("--lon",  type=float, default=-74.00, help="Longitude (default: -74.00)")
     parser.add_argument("--conf", type=float, default=0.10,  help="Min confidence 0-1 (default: 0.10)")
     args = parser.parse_args()
 

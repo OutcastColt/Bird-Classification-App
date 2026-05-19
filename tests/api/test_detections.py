@@ -16,7 +16,7 @@ def app(tmp_path, monkeypatch):
         camera_id="cam1", timestamp="2026-05-18T10:00:00",
         species_common="Robin", species_sci="Turdus migratorius",
         confidence=0.85, clip_path="data/clips/cam1/clip.wav",
-        lat=38.89, lon=-77.03,
+        lat=40.71, lon=-74.00,
     ), db)
     a = FastAPI()
     a.include_router(router)

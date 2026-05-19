@@ -8,8 +8,8 @@ server:
   host: 0.0.0.0
   port: 8080
 location:
-  lat: 38.8977
-  lon: -77.0365
+  lat: 40.7128
+  lon: -74.0060
 birdnet:
   min_confidence: 0.70
   overlap: 1.5
@@ -38,8 +38,8 @@ def test_load_valid_config():
     path = _tmp_cfg(VALID_YAML)
     try:
         cfg = load_config(path)
-        assert cfg.location.lat == 38.8977
-        assert cfg.location.lon == -77.0365
+        assert cfg.location.lat == 40.7128
+        assert cfg.location.lon == -74.0060
         assert cfg.birdnet.min_confidence == 0.70
         assert cfg.inference.workers == 4
         assert len(cfg.cameras) == 1

@@ -9,7 +9,7 @@ from birdwatch.api.settings import router
 def make_cfg():
     return AppConfig(
         server=ServerConfig(),
-        location=LocationConfig(lat=38.89, lon=-77.03),
+        location=LocationConfig(lat=40.71, lon=-74.00),
         birdnet=BirdnetConfig(),
         inference=InferenceConfig(),
         alerts=AlertsConfig(),
@@ -27,8 +27,8 @@ def test_get_settings(app):
     r = TestClient(app).get("/api/settings")
     assert r.status_code == 200
     data = r.json()
-    assert data["lat"] == 38.89
-    assert data["lon"] == -77.03
+    assert data["lat"] == 40.71
+    assert data["lon"] == -74.00
     assert "min_confidence" in data
     assert "use_gpu" in data
 
@@ -43,5 +43,5 @@ def test_partial_update_does_not_reset_other_fields(app):
     client = TestClient(app)
     client.put("/api/settings", json={"min_confidence": 0.80})
     r = client.get("/api/settings")
-    assert r.json()["lat"] == 38.89   # unchanged
+    assert r.json()["lat"] == 40.71   # unchanged
     assert r.json()["min_confidence"] == 0.80

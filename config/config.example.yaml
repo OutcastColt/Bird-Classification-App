@@ -3,8 +3,8 @@ server:
   port: 8080
 
 location:
-  lat: 38.8977   # your latitude in decimal degrees
-  lon: -77.0365  # your longitude in decimal degrees
+  lat: 40.7128   # your latitude in decimal degrees
+  lon: -74.0060  # your longitude in decimal degrees
 
 birdnet:
   min_confidence: 0.70   # 0.0-1.0; detections below this threshold are discarded
