@@ -120,6 +120,55 @@ Supported notification methods — configured via the Settings tab:
 | `data/clips/` | WAV audio clips (pruned after `alerts.retention_days`) |
 | `logs/birdwatch.log` | Rolling log file (30 days retained) |
 
+## Testing BirdNET
+
+Verify BirdNET is installed and detecting correctly using the included test script.
+It downloads a short public-domain Common Blackbird recording and runs it through
+the model, printing any detections found.
+
+    cd /opt/birdwatch
+    source venv/bin/activate
+    python scripts/test_birdnet.py
+
+Expected output:
+
+    Downloading test audio from Wikimedia Commons...
+    Downloaded 124 KB -> /tmp/tmpXXXXXX.ogg
+
+    --- Step 1: Load BirdNET model ---
+    Model loaded OK
+
+    --- Step 2: Analyse audio ---
+      File      : /tmp/tmpXXXXXX.ogg
+      Location  : 38.89, -77.03
+      Min conf  : 10%
+      Date      : 2026-05-19
+
+    --- Step 3: Results ---
+    Species                        Scientific name                     Confidence
+    -----------------------------------------------------------------------------
+    Common Blackbird               Turdus merula                              91%
+
+    1 detection(s) found — BirdNET is working correctly.
+
+**Options:**
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--audio <path>` | Use a local audio file instead of downloading | (downloads sample) |
+| `--lat <float>` | Latitude for species filtering | 38.89 |
+| `--lon <float>` | Longitude for species filtering | -77.03 |
+| `--conf <float>` | Minimum confidence threshold | 0.10 |
+
+Example with a local file and your own coordinates:
+
+    python scripts/test_birdnet.py --audio /path/to/bird.wav --lat 51.5 --lon -0.1
+
+**Troubleshooting:**
+
+- `Failed to load model` — run `pip install -r requirements.txt` inside the venv; the model downloads automatically on first run (requires internet access)
+- `No detections` — try `--conf 0.05` or use a different audio file; the sample is a European species so location filtering may suppress it outside Europe
+
 ## Upgrading
 
     cd /opt/birdwatch
