@@ -9,9 +9,12 @@ CLIPS_ROOT = Path("data/clips").resolve()
 
 @router.get("/clips/{clip_path:path}")
 def serve_clip(clip_path: str):
-    full = Path(clip_path)
+    # DB stores paths as "data/clips/<camera>/..." — strip that prefix so we
+    # don't double-prepend it when resolving against CLIPS_ROOT.
+    clean = clip_path.removeprefix("data/clips/")
+    full = Path(clean)
     if not full.is_absolute():
-        full = CLIPS_ROOT / clip_path
+        full = CLIPS_ROOT / clean
     resolved = full.resolve()
     try:
         resolved.relative_to(CLIPS_ROOT)
