@@ -401,6 +401,7 @@ document.addEventListener('alpine:init', () => {
         onPlayClip:      clipPath => this.playClip(clipPath),
         onOpenPanel:     (common, sci) => this.openBirdPanel(common, sci),
         onSpeciesSelect: species => { this.vizSelectedSpecies = species || ''; },
+        cameraId:        this.vizCameraId,  // used by spectrogram
       });
       await this.loadVizData();
     },

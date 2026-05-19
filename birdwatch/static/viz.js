@@ -552,6 +552,370 @@ class SpeciesConfidenceChart {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Spectrogram Chart — real-time scrolling FFT waterfall via WebSocket PCM
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+class SpectrogramChart {
+  static FFT_SIZE    = 1024;       // FFT window (samples)
+  static HOP_SIZE    = 512;        // hop between windows (samples)
+  static SAMPLE_RATE = 48000;      // Hz (matches FFmpeg output)
+  static MAX_FREQ    = 8000;       // Hz — display ceiling (all bird calls)
+  static CANVAS_H    = 300;        // px height of spectrogram
+
+  constructor(container, options = {}) {
+    this.el          = container;
+    this.cameraId    = options.cameraId    || '';
+    this.onOpenPanel = options.onOpenPanel || (() => {});
+
+    this._sampleBuf  = [];          // accumulated float32 samples
+    this._detections = [];          // [{timestamp, species_common, confidence}]
+    this._colTimes   = [];          // ms timestamp per rendered column
+    this._ws         = null;
+    this._normMax    = 1;           // rolling normalisation ceiling
+
+    this._init();
+  }
+
+  /* ── Setup ──────────────────────────────────────────────────────────── */
+  _init() {
+    const el = d3.select(this.el);
+    el.selectAll('*').remove();
+
+    // Status bar
+    const hdr = el.append('div').attr('class', 'bw-spec-hdr');
+    this._dot   = hdr.append('span').attr('class', 'bw-spec-dot');
+    this._lbl   = hdr.append('span').attr('class', 'bw-spec-lbl')
+                     .text(this.cameraId ? `${this.cameraId}` : 'Select a camera above');
+
+    // Wrapper: freq axis + canvas side by side
+    const wrap = el.append('div').style('display', 'flex').style('align-items', 'stretch');
+
+    // Frequency axis (40px wide canvas on the left)
+    this._freqAxisCanvas = wrap.append('canvas')
+      .attr('width', 40).attr('height', SpectrogramChart.CANVAS_H)
+      .style('flex-shrink', '0').node();
+    this._drawFreqAxis();
+
+    // Main spectrogram canvas
+    this._canvas = wrap.append('canvas')
+      .attr('height', SpectrogramChart.CANVAS_H)
+      .style('flex', '1').style('cursor', 'crosshair')
+      .node();
+    this._ctx = this._canvas.getContext('2d');
+
+    // Offscreen back buffer (avoids draw-to-self artefacts)
+    this._back    = document.createElement('canvas');
+    this._back.height = SpectrogramChart.CANVAS_H;
+    this._backCtx = this._back.getContext('2d');
+
+    // Tooltip
+    this._tip = d3.select(this.el).append('div')
+      .attr('class', 'viz-tip').style('display', 'none');
+
+    // Mouse events
+    this._canvas.addEventListener('mousemove',  e => this._onMouse(e));
+    this._canvas.addEventListener('mouseleave', () => this._tip.style('display', 'none'));
+
+    // Time axis below canvas
+    const timeWrap = el.append('div').style('display', 'flex');
+    timeWrap.append('div').style('width', '40px').style('flex-shrink', '0');
+    this._timeCanvas = timeWrap.append('canvas')
+      .attr('height', 20).style('flex', '1').node();
+
+    this._ro = new ResizeObserver(() => this._resize());
+    this._ro.observe(this.el);
+    this._resize();
+
+    if (this.cameraId) this._connectWS();
+  }
+
+  _resize() {
+    const W = Math.max(200, (this.el.getBoundingClientRect().width || 900) - 40);
+    const H = SpectrogramChart.CANVAS_H;
+    this._W = W;
+    this._canvas.width      = W;
+    this._back.width        = W;
+    this._timeCanvas.width  = W;
+    // Fill dark
+    this._ctx.fillStyle = '#07090f';
+    this._ctx.fillRect(0, 0, W, H);
+    this._backCtx.fillStyle = '#07090f';
+    this._backCtx.fillRect(0, 0, W, H);
+    this._colTimes = new Array(W).fill(0);
+    this._drawTimeAxis();
+  }
+
+  /* ── WebSocket ──────────────────────────────────────────────────────── */
+  _connectWS() {
+    if (this._ws) { try { this._ws.close(); } catch(e){} this._ws = null; }
+    if (!this.cameraId) return;
+
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    this._ws = new WebSocket(`${proto}://${location.host}/ws/audio/${this.cameraId}`);
+    this._ws.binaryType = 'arraybuffer';
+
+    this._ws.onopen  = () => {
+      this._dot.classed('bw-spec-dot-on', true);
+      this._lbl.text(this.cameraId);
+    };
+    this._ws.onclose = () => {
+      this._dot.classed('bw-spec-dot-on', false);
+      setTimeout(() => this._connectWS(), 3000);
+    };
+    this._ws.onmessage = e => this._onChunk(e.data);
+  }
+
+  /* ── Audio processing ───────────────────────────────────────────────── */
+  _onChunk(ab) {
+    // Parse: [4-byte LE uint32 tsLen][tsBytes UTF-8][Int16 PCM...]
+    const view  = new DataView(ab);
+    const tsLen = view.getUint32(0, true);
+    const ts    = new TextDecoder().decode(new Uint8Array(ab, 4, tsLen));
+    const ts_ms = new Date(ts).getTime();
+    const pcm16 = new Int16Array(ab, 4 + tsLen);
+
+    // Int16 → float32, append to buffer
+    const chunkStartMs = ts_ms - (pcm16.length / SpectrogramChart.SAMPLE_RATE) * 1000;
+    for (let i = 0; i < pcm16.length; i++) this._sampleBuf.push(pcm16[i] / 32768);
+
+    // Process complete FFT windows
+    const FFT = SpectrogramChart.FFT_SIZE;
+    const HOP = SpectrogramChart.HOP_SIZE;
+    let win = 0;
+    while (this._sampleBuf.length >= FFT) {
+      const mag   = this._fft(this._sampleBuf, FFT);
+      const colTs = chunkStartMs + (win * HOP / SpectrogramChart.SAMPLE_RATE) * 1000;
+      this._renderColumn(mag, colTs);
+      this._sampleBuf.splice(0, HOP);
+      win++;
+    }
+    this._drawTimeAxis();
+    this._renderDetectionOverlay();
+  }
+
+  _fft(samples, n) {
+    const re = new Float32Array(n);
+    const im = new Float32Array(n);
+    // Hanning window
+    for (let i = 0; i < n; i++) {
+      re[i] = (samples[i] || 0) * 0.5 * (1 - Math.cos(6.2832 * i / (n - 1)));
+    }
+    // Bit-reversal
+    let j = 0;
+    for (let i = 1; i < n; i++) {
+      let b = n >> 1;
+      for (; j & b; b >>= 1) j ^= b;
+      j ^= b;
+      if (i < j) { [re[i], re[j]] = [re[j], re[i]]; }
+    }
+    // Butterfly
+    for (let len = 2; len <= n; len <<= 1) {
+      const ang = -6.2832 / len;
+      const wr = Math.cos(ang), wi = Math.sin(ang);
+      for (let i = 0; i < n; i += len) {
+        let cr = 1, ci = 0;
+        const half = len >> 1;
+        for (let k = 0; k < half; k++) {
+          const ur = re[i+k],     ui = im[i+k];
+          const vr = re[i+k+half]*cr - im[i+k+half]*ci;
+          const vi = re[i+k+half]*ci + im[i+k+half]*cr;
+          re[i+k]      = ur+vr; im[i+k]      = ui+vi;
+          re[i+k+half] = ur-vr; im[i+k+half] = ui-vi;
+          const nr = cr*wr - ci*wi; ci = cr*wi + ci*wr; cr = nr;
+        }
+      }
+    }
+    // Log magnitude (first half, 0 → Nyquist)
+    const half = n >> 1;
+    const mag  = new Float32Array(half);
+    for (let i = 0; i < half; i++) {
+      mag[i] = Math.log1p(Math.sqrt(re[i]*re[i] + im[i]*im[i]));
+    }
+    return mag;
+  }
+
+  /* ── Rendering ──────────────────────────────────────────────────────── */
+  _renderColumn(mag, ts_ms) {
+    const W = this._W;
+    const H = SpectrogramChart.CANVAS_H;
+    const binsToShow = Math.floor(
+      SpectrogramChart.MAX_FREQ / (SpectrogramChart.SAMPLE_RATE / 2) * (SpectrogramChart.FFT_SIZE >> 1)
+    );
+
+    // Rolling normalisation (avoids fixed-max issues with varying environments)
+    let colMax = 0;
+    for (let b = 0; b < binsToShow; b++) if (mag[b] > colMax) colMax = mag[b];
+    this._normMax = this._normMax * 0.9995 + colMax * 0.0005 + 0.001;
+
+    // Build 1-pixel-wide column as ImageData
+    const col = this._ctx.createImageData(1, H);
+    for (let py = 0; py < H; py++) {
+      const bin   = Math.floor((1 - py / H) * binsToShow);
+      const level = Math.min(1, (mag[Math.min(bin, mag.length - 1)] || 0) / this._normMax);
+      const [r, g, b] = this._colormap(level);
+      const idx = py * 4;
+      col.data[idx]   = r;
+      col.data[idx+1] = g;
+      col.data[idx+2] = b;
+      col.data[idx+3] = 255;
+    }
+
+    // Scroll: copy main → back (shifted 1px left), write new column on right, copy back
+    this._backCtx.drawImage(this._canvas, -1, 0);
+    this._backCtx.putImageData(col, W - 1, 0);
+    this._ctx.drawImage(this._back, 0, 0);
+
+    // Track column timestamps (circular shift)
+    this._colTimes.push(ts_ms);
+    if (this._colTimes.length > W) this._colTimes.shift();
+  }
+
+  _colormap(t) {
+    // Spectrogram palette: black → deep blue → cyan → green → yellow → white
+    if (t <= 0)    return [0, 0, 0];
+    if (t < 0.15)  { const s = t / 0.15;        return [0, 0, Math.round(s * 180)]; }
+    if (t < 0.35)  { const s = (t-0.15)/0.20;   return [0, Math.round(s*180), Math.round(180+s*75)]; }
+    if (t < 0.55)  { const s = (t-0.35)/0.20;   return [0, Math.round(180+s*75), Math.round(255-s*100)]; }
+    if (t < 0.75)  { const s = (t-0.55)/0.20;   return [Math.round(s*255), 255, 0]; }
+    /* t < 1 */    { const s = (t-0.75)/0.25;   return [255, 255, Math.round(s*255)]; }
+  }
+
+  _renderDetectionOverlay() {
+    if (!this._detections.length || !this._colTimes.length) return;
+    const W = this._W;
+    const H = SpectrogramChart.CANVAS_H;
+    const ctx = this._ctx;
+
+    ctx.save();
+    for (const det of this._detections) {
+      const det_ms = new Date(det.timestamp).getTime();
+      // Find the canvas column closest to this timestamp
+      let x = -1;
+      for (let i = 0; i < this._colTimes.length; i++) {
+        if (this._colTimes[i] >= det_ms) { x = i; break; }
+      }
+      if (x < 0 || x >= W) continue;
+
+      // Deterministic color from species name
+      const hue = Math.abs(
+        det.species_common.split('').reduce((h, c) => ((h << 5) - h) + c.charCodeAt(0), 0)
+      ) % 360;
+
+      ctx.globalAlpha = 0.8;
+      ctx.strokeStyle = `hsl(${hue},100%,65%)`;
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Species label at top
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle   = `hsl(${hue},100%,75%)`;
+      ctx.font        = 'bold 10px sans-serif';
+      const label = det.species_common.split(' ').slice(0, 2).join(' ');
+      // Avoid label going off right edge
+      const lx = x + 3 > W - 60 ? x - 62 : x + 3;
+      ctx.fillText(label, lx, 14);
+    }
+    ctx.restore();
+  }
+
+  _drawFreqAxis() {
+    const ctx = this._freqAxisCanvas.getContext('2d');
+    const H   = SpectrogramChart.CANVAS_H;
+    ctx.fillStyle = '#0f1117';
+    ctx.fillRect(0, 0, 40, H);
+    ctx.fillStyle   = '#718096';
+    ctx.font        = '9px sans-serif';
+    ctx.textAlign   = 'right';
+    for (const f of [8000, 6000, 4000, 2000, 1000, 500]) {
+      const y = Math.round((1 - f / SpectrogramChart.MAX_FREQ) * H);
+      ctx.fillText(f >= 1000 ? (f/1000) + 'k' : f, 36, y + 3);
+      ctx.fillStyle = '#2d3748';
+      ctx.fillRect(37, y, 3, 1);
+      ctx.fillStyle = '#718096';
+    }
+    // kHz label
+    ctx.save();
+    ctx.translate(8, H / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#4a5568';
+    ctx.fillText('kHz', 0, 0);
+    ctx.restore();
+  }
+
+  _drawTimeAxis() {
+    if (!this._timeCanvas) return;
+    const ctx = this._timeCanvas.getContext('2d');
+    const W   = this._W;
+    ctx.fillStyle = '#0f1117';
+    ctx.fillRect(0, 0, W, 20);
+    ctx.fillStyle = '#718096';
+    ctx.font      = '9px sans-serif';
+    ctx.textAlign = 'center';
+    // Draw a tick every ~100px
+    for (let x = 0; x < W; x += 100) {
+      const ts_ms = this._colTimes[x];
+      if (!ts_ms) continue;
+      const label = new Date(ts_ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      ctx.fillText(label, x, 12);
+    }
+  }
+
+  _onMouse(e) {
+    const rect = this._canvas.getBoundingClientRect();
+    const x    = Math.floor(e.clientX - rect.left);
+    const y    = Math.floor(e.clientY - rect.top);
+    const freq = Math.round((1 - y / SpectrogramChart.CANVAS_H) * SpectrogramChart.MAX_FREQ);
+    const ts_ms = this._colTimes[x];
+    const t = ts_ms ? new Date(ts_ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+
+    const tipX = e.offsetX > (this._W - 160) ? e.offsetX - 155 : e.offsetX + 14;
+    this._tip
+      .style('display', 'block')
+      .style('left', (tipX + 40) + 'px')
+      .style('top',  (e.offsetY - 8) + 'px')
+      .html(`<div class="viz-tt-row"><b>Freq</b> ${freq.toLocaleString()} Hz</div>
+             <div class="viz-tt-row"><b>Time</b> ${t}</div>`);
+  }
+
+  /* ── Public API ───────────────────────────────────────────────────── */
+  update(data) {
+    // Receive detection events to overlay on the spectrogram
+    this._detections = Array.isArray(data)
+      ? data.filter(d => !this.cameraId || d.camera_id === this.cameraId).slice(0, 50)
+      : [];
+  }
+
+  setFilters(f) {
+    if (f.cameraId !== undefined && f.cameraId !== this.cameraId) {
+      this.cameraId = f.cameraId;
+      this._lbl.text(f.cameraId || 'Select a camera above');
+      this._resize();
+      this._connectWS();
+    }
+  }
+
+  appendDetection(d) {
+    // Live WS detection — add to overlay list
+    if (!this.cameraId || d.camera_id === this.cameraId) {
+      this._detections.unshift(d);
+      if (this._detections.length > 50) this._detections.pop();
+      this._renderDetectionOverlay();
+    }
+  }
+
+  resize()  { this._resize(); }
+  destroy() {
+    if (this._ro) this._ro.disconnect();
+    if (this._ws) { try { this._ws.close(); } catch(e){} }
+    d3.select(this.el).selectAll('*').remove();
+  }
+}
+
 /* ── Register built-in chart types ─────────────────────────────────────── */
 BirdWatchViz.register('timeline',    TimelineChart);
 BirdWatchViz.register('speciesconf', SpeciesConfidenceChart);
+BirdWatchViz.register('spectrogram', SpectrogramChart);

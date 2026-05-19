@@ -35,10 +35,12 @@ class ProcessManager:
         cfg: AppConfig,
         infer_queue: multiprocessing.Queue,
         result_queue: multiprocessing.Queue,
+        audio_queue: multiprocessing.Queue | None = None,
     ) -> None:
         self.cfg = cfg
         self.infer_queue = infer_queue
         self.result_queue = result_queue
+        self.audio_queue = audio_queue
         self._workers: dict[str, _WorkerEntry] = {}
         self._heartbeat_task: Optional[asyncio.Task] = None
         self.logger = logging.getLogger("process_manager")
@@ -61,6 +63,7 @@ class ProcessManager:
                 self.cfg.location.lon,
                 self.cfg.birdnet.min_confidence,
                 stop,
+                self.audio_queue,
             ),
             daemon=True,
             name=f"camera-{camera.id}",

@@ -61,6 +61,7 @@ def run_camera_worker(
     lon: float,
     min_confidence: float,
     stop_event: multiprocessing.Event,
+    audio_queue: multiprocessing.Queue | None = None,
 ) -> None:
     """Entry point for a camera worker subprocess.
 
@@ -82,6 +83,7 @@ def run_camera_worker(
             _stream_loop(
                 camera_id, stream_url, infer_queue,
                 overlap_seconds, lat, lon, min_confidence, stop_event, logger,
+                audio_queue,
             )
             backoff = 2.0  # reset after clean exit
         except Exception as exc:
@@ -100,6 +102,7 @@ def _stream_loop(
     min_confidence: float,
     stop_event: multiprocessing.Event,
     logger: logging.Logger,
+    audio_queue: multiprocessing.Queue | None = None,
 ) -> None:
     cmd = build_ffmpeg_cmd(stream_url)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -131,6 +134,16 @@ def _stream_loop(
                     logger.warning(
                         "Inference queue full, dropping chunk from %s", camera_id
                     )
+                # Also forward to audio streaming queue (best-effort, never blocks)
+                if audio_queue is not None:
+                    try:
+                        audio_queue.put_nowait({
+                            "camera_id": camera_id,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "pcm": pcm,
+                        })
+                    except Exception:
+                        pass  # silently drop — streaming is best-effort
     finally:
         proc.terminate()
         proc.wait()

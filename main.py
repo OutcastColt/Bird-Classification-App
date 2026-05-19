@@ -129,6 +129,40 @@ async def _clip_cleanup(retention_days: int) -> None:
                 logger.info("Removed old clips: %s", date_dir)
 
 
+async def _audio_streamer(
+    audio_queue: multiprocessing.Queue,
+    audio_subs: dict,
+) -> None:
+    """Read PCM chunks from camera workers and broadcast to WebSocket subscribers."""
+    logger = logging.getLogger("audio_streamer")
+    loop   = asyncio.get_running_loop()
+    while True:
+        try:
+            chunk = await loop.run_in_executor(None, lambda: audio_queue.get(timeout=0.5))
+        except Exception:
+            await asyncio.sleep(0.02)
+            continue
+
+        cam_id  = chunk["camera_id"]
+        ws_set  = audio_subs.get(cam_id, set())
+        if not ws_set:
+            continue
+
+        # Binary frame: [4-byte LE uint32 timestamp-len][timestamp UTF-8][Int16 PCM]
+        ts_b = chunk["timestamp"].encode("utf-8")
+        msg  = len(ts_b).to_bytes(4, "little") + ts_b + chunk["pcm"]
+
+        dead = []
+        for ws in list(ws_set):
+            try:
+                await ws.send_bytes(msg)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            ws_set.discard(ws)
+            logger.debug("Removed dead audio subscriber for %s", cam_id)
+
+
 def _setup_logging(level: str) -> None:
     Path("logs").mkdir(exist_ok=True)
     fmt = logging.Formatter("%(asctime)s %(name)-20s %(levelname)s %(message)s")
@@ -184,8 +218,13 @@ def create_app() -> FastAPI:
             maxsize=cfg.inference.queue_max
         )
         result_queue: multiprocessing.Queue = multiprocessing.Queue()
+        audio_queue: multiprocessing.Queue = multiprocessing.Queue(maxsize=200)
 
-        proc_mgr = ProcessManager(cfg, infer_queue, result_queue)
+        # Audio subscribers: { camera_id: set[WebSocket] }
+        audio_subs: dict[str, set] = {}
+        app.state.audio_subs = audio_subs
+
+        proc_mgr = ProcessManager(cfg, infer_queue, result_queue, audio_queue)
         proc_mgr.start_all()
         await proc_mgr.start_heartbeat()
 
@@ -199,12 +238,16 @@ def create_app() -> FastAPI:
         cleanup_task = asyncio.create_task(
             _clip_cleanup(cfg.alerts.retention_days)
         )
+        audio_task = asyncio.create_task(
+            _audio_streamer(audio_queue, audio_subs)
+        )
 
         yield  # ── app is running ──
 
         consumer_task.cancel()
         cleanup_task.cancel()
-        await asyncio.gather(consumer_task, cleanup_task, return_exceptions=True)
+        audio_task.cancel()
+        await asyncio.gather(consumer_task, cleanup_task, audio_task, return_exceptions=True)
         proc_mgr.stop_all()
 
     fastapi_app = FastAPI(title="BirdWatch", lifespan=lifespan)
@@ -231,6 +274,18 @@ def create_app() -> FastAPI:
             pass
         finally:
             mgr.disconnect(websocket)
+
+    @fastapi_app.websocket("/ws/audio/{camera_id}")
+    async def ws_audio(websocket: WebSocket, camera_id: str):
+        """Stream raw PCM audio from a camera to the browser spectrogram."""
+        await websocket.accept()
+        subs = fastapi_app.state.audio_subs.setdefault(camera_id, set())
+        subs.add(websocket)
+        try:
+            while True:
+                await websocket.receive_text()   # keepalive ping from client
+        except Exception:
+            subs.discard(websocket)
 
     # Mount static files AFTER API routes so /api/* is not shadowed
     fastapi_app.mount(
