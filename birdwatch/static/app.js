@@ -157,14 +157,34 @@ document.addEventListener('alpine:init', () => {
     },
 
     async loadHistory() {
-      const p = new URLSearchParams({ limit: this.histLimit, offset: this.histPage * this.histLimit });
+      const conservationOnly = this.histFilter.conservation && !this.histFilter.species;
+
+      const p = new URLSearchParams({
+        // Fetch a larger batch when filtering by conservation only (client-side filter)
+        limit:  conservationOnly ? 200 : this.histLimit,
+        offset: conservationOnly ? 0   : this.histPage * this.histLimit,
+      });
       if (this.histFilter.camera_id) p.set('camera_id', this.histFilter.camera_id);
-      if (this.histFilter.species) p.set('species', this.histFilter.species);
+      if (this.histFilter.species)   p.set('species', this.histFilter.species);
       // Append time so date-only strings compare correctly with stored ISO datetimes
       if (this.histFilter.date_from) p.set('date_from', this.histFilter.date_from + 'T00:00:00');
       if (this.histFilter.date_to)   p.set('date_to',   this.histFilter.date_to   + 'T23:59:59');
+
       const r = await fetch(`/api/detections?${p}`);
-      this.historyRows = await r.json();
+      let rows = await r.json();
+
+      // Conservation-only filter: match against the iNaturalist cache
+      if (conservationOnly) {
+        const code = this.histFilter.conservation;
+        rows = rows.filter(d => {
+          const key = d.species_sci || d.species_common;
+          const c = this.speciesConservation[key];
+          return c && c.code === code;
+        });
+        rows = rows.slice(0, this.histLimit);
+      }
+
+      this.historyRows = rows;
       for (const d of this.historyRows)
         this.fetchBirdImage(d.species_common, d.species_sci);
     },
