@@ -38,6 +38,9 @@ document.addEventListener('alpine:init', () => {
     settings: {},
     settingsSaved: false,
 
+    // Weather widget (Open-Meteo — no API key required)
+    weather: { temp: null, desc: '', symbol: '', wind: null, loading: false },
+
     // Alert rules
     alertRules: [],
     newRule: { species_filter: '', min_confidence: 0.70, method: 'webhook',
@@ -50,9 +53,11 @@ document.addEventListener('alpine:init', () => {
       await this.loadSettings();
       await this.loadAlertRules();
       await this.loadDetectionSummary();
+      await this.loadWeather();
       this.connectWS();
       setInterval(() => this.loadCameraStatuses(), 10000);
       setInterval(() => this.loadDetectionSummary(), 30000);
+      setInterval(() => this.loadWeather(), 30 * 60 * 1000); // refresh every 30 min
     },
 
     connectWS() {
@@ -281,6 +286,7 @@ document.addEventListener('alpine:init', () => {
       });
       if (r.ok) {
         this.settingsSaved = true;
+        this.loadWeather();   // refresh weather if lat/lon changed
         setTimeout(() => { this.settingsSaved = false; }, 3000);
       }
     },
@@ -311,6 +317,61 @@ document.addEventListener('alpine:init', () => {
     async deleteRule(id) {
       await fetch(`/api/alerts/rules/${id}`, { method: 'DELETE' });
       await this.loadAlertRules();
+    },
+
+    async loadWeather() {
+      const lat = this.settings?.lat;
+      const lon = this.settings?.lon;
+      if (!lat || !lon) return;
+      this.weather.loading = true;
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast`
+          + `?latitude=${lat}&longitude=${lon}`
+          + `&current=temperature_2m,weathercode,windspeed_10m`
+          + `&temperature_unit=fahrenheit&windspeed_unit=mph&timezone=auto`;
+        const r = await fetch(url);
+        if (r.ok) {
+          const d = await r.json();
+          const c = d.current;
+          this.weather = {
+            temp:    Math.round(c.temperature_2m),
+            wind:    Math.round(c.windspeed_10m),
+            desc:    this._wmoDesc(c.weathercode),
+            symbol:  this._wmoSymbol(c.weathercode),
+            loading: false,
+          };
+        }
+      } catch(e) { this.weather.loading = false; }
+    },
+
+    _wmoDesc(code) {
+      if (code === 0)              return 'Clear';
+      if (code <= 1)               return 'Mainly Clear';
+      if (code <= 2)               return 'Partly Cloudy';
+      if (code <= 3)               return 'Overcast';
+      if (code <= 48)              return 'Fog';
+      if (code <= 55)              return 'Drizzle';
+      if (code <= 65)              return 'Rain';
+      if (code <= 75)              return 'Snow';
+      if (code <= 77)              return 'Snow Grains';
+      if (code <= 82)              return 'Showers';
+      if (code <= 86)              return 'Snow Showers';
+      if (code <= 99)              return 'Thunderstorm';
+      return 'Unknown';
+    },
+
+    _wmoSymbol(code) {
+      if (code === 0)              return '☀';
+      if (code <= 2)               return '⛅';
+      if (code <= 3)               return '☁';
+      if (code <= 48)              return '≡';   // fog bars
+      if (code <= 55)              return '~';   // drizzle
+      if (code <= 65)              return '☂';
+      if (code <= 77)              return '❄';
+      if (code <= 82)              return '☂';
+      if (code <= 86)              return '❄';
+      if (code <= 99)              return '⚡';
+      return '?';
     },
 
     cameraStatusClass(status) {

@@ -22,7 +22,17 @@
     <button :class="tab==='cameras'?'active':''"  @click="tab='cameras'">Cameras</button>
     <button :class="tab==='settings'?'active':''" @click="tab='settings'">Settings</button>
   </nav>
-  <span style="margin-left:auto;font-size:.75rem;color:#718096">
+  <!-- Weather widget -->
+  <div x-show="weather.temp !== null"
+       style="margin-left:auto;display:flex;align-items:center;gap:.5rem;background:#222736;border:1px solid #2d3748;border-radius:8px;padding:.35rem .75rem;cursor:default"
+       :title="weather.desc + ' — ' + weather.wind + ' mph wind'">
+    <span style="font-size:1.05rem;line-height:1" x-text="weather.symbol"></span>
+    <span style="font-size:.9rem;font-weight:600;color:#e2e8f0" x-text="weather.temp + '°F'"></span>
+    <span style="font-size:.78rem;color:#a0aec0" x-text="weather.desc"></span>
+    <span style="font-size:.75rem;color:#718096" x-text="weather.wind + ' mph'"></span>
+  </div>
+
+  <span style="font-size:.75rem;color:#718096">
     WS: <span :style="wsConnected?'color:#68d391':'color:#fc8181'"
               x-text="wsConnected?'connected':'reconnecting'"></span>
   </span>
