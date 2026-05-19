@@ -11,7 +11,7 @@ def get_detections(
     species: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=2000),
     offset: int = Query(0, ge=0),
 ):
     return dbmod.list_detections(

@@ -41,6 +41,13 @@ document.addEventListener('alpine:init', () => {
     // Weather widget (Open-Meteo — no API key required)
     weather: { temp: null, desc: '', symbol: '', wind: null, loading: false },
 
+    // Visualization tab
+    viz: {
+      chartType: 'timeline',
+      loading: false,
+      filters: { minConf: 0.5, cameraId: '', hours: 24 },
+    },
+
     // Alert rules
     alertRules: [],
     newRule: { species_filter: '', min_confidence: 0.70, method: 'webhook',
@@ -81,6 +88,8 @@ document.addEventListener('alpine:init', () => {
           this.liveDetections.pop();
         this.fetchBirdImage(det.species_common, det.species_sci);
         this.loadDetectionSummary();
+        // Forward live detection to active viz chart
+        if (BirdWatchViz.hasActive()) BirdWatchViz.getActive().appendDetection?.(det);
       };
     },
 
@@ -372,6 +381,56 @@ document.addEventListener('alpine:init', () => {
       if (code <= 86)              return '❄';
       if (code <= 99)              return '⚡';
       return '?';
+    },
+
+    // ── Visualization tab ─────────────────────────────────────────────────
+
+    async openVizTab() {
+      this.tab = 'viz';
+      // Wait one tick for the DOM element to be visible before mounting
+      await this.$nextTick?.() || await new Promise(r => setTimeout(r, 50));
+      this.mountViz();
+    },
+
+    async mountViz() {
+      const container = document.getElementById('viz-chart');
+      if (!container) return;
+
+      BirdWatchViz.mount(this.viz.chartType, container, {
+        onPlayClip:  clipPath => this.playClip(clipPath),
+        onOpenPanel: (common, sci) => this.openBirdPanel(common, sci),
+      });
+
+      await this.loadVizData();
+    },
+
+    async loadVizData() {
+      this.viz.loading = true;
+      try {
+        const f = this.viz.filters;
+        // Convert hours to date_from for the API
+        const dateFrom = new Date(Date.now() - f.hours * 3600000).toISOString();
+        const p = new URLSearchParams({ limit: 2000, date_from: dateFrom });
+        if (f.cameraId) p.set('camera_id', f.cameraId);
+        const r = await fetch(`/api/detections?${p}`);
+        const data = await r.json();
+        BirdWatchViz.update(data);
+      } catch(e) { /* non-fatal */ }
+      this.viz.loading = false;
+    },
+
+    setVizFilters(patch) {
+      this.viz.filters = { ...this.viz.filters, ...patch };
+      if (BirdWatchViz.hasActive()) {
+        BirdWatchViz.getActive().setFilters(this.viz.filters);
+      }
+      this.loadVizData();
+    },
+
+    resetVizZoom() {
+      if (BirdWatchViz.hasActive()) {
+        BirdWatchViz.getActive().setFilters(this.viz.filters);
+      }
     },
 
     cameraStatusClass(status) {
