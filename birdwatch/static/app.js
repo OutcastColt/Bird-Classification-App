@@ -41,12 +41,12 @@ document.addEventListener('alpine:init', () => {
     // Weather widget (Open-Meteo — no API key required)
     weather: { temp: null, desc: '', symbol: '', wind: null, loading: false },
 
-    // Visualization tab
-    viz: {
-      chartType: 'timeline',
-      loading: false,
-      filters: { minConf: 0.5, cameraId: '', hours: 24 },
-    },
+    // Visualization tab (flat top-level properties — Alpine resolves these reliably)
+    vizChartType: 'timeline',
+    vizLoading:   false,
+    vizMinConf:   0.5,
+    vizCameraId:  '',
+    vizHours:     24,
 
     // Alert rules
     alertRules: [],
@@ -387,50 +387,41 @@ document.addEventListener('alpine:init', () => {
 
     async openVizTab() {
       this.tab = 'viz';
-      // Wait one tick for the DOM element to be visible before mounting
-      await this.$nextTick?.() || await new Promise(r => setTimeout(r, 50));
+      await new Promise(r => setTimeout(r, 60));
       this.mountViz();
     },
 
     async mountViz() {
       const container = document.getElementById('viz-chart');
       if (!container) return;
-
-      BirdWatchViz.mount(this.viz.chartType, container, {
+      BirdWatchViz.mount(this.vizChartType, container, {
         onPlayClip:  clipPath => this.playClip(clipPath),
         onOpenPanel: (common, sci) => this.openBirdPanel(common, sci),
       });
-
       await this.loadVizData();
     },
 
     async loadVizData() {
-      this.viz.loading = true;
+      this.vizLoading = true;
       try {
-        const f = this.viz.filters;
-        // Convert hours to date_from for the API
-        const dateFrom = new Date(Date.now() - f.hours * 3600000).toISOString();
+        const dateFrom = new Date(Date.now() - this.vizHours * 3600000).toISOString();
         const p = new URLSearchParams({ limit: 2000, date_from: dateFrom });
-        if (f.cameraId) p.set('camera_id', f.cameraId);
+        if (this.vizCameraId) p.set('camera_id', this.vizCameraId);
         const r = await fetch(`/api/detections?${p}`);
-        const data = await r.json();
-        BirdWatchViz.update(data);
+        BirdWatchViz.update(await r.json());
       } catch(e) { /* non-fatal */ }
-      this.viz.loading = false;
+      this.vizLoading = false;
     },
 
-    setVizFilters(patch) {
-      this.viz.filters = { ...this.viz.filters, ...patch };
-      if (BirdWatchViz.hasActive()) {
-        BirdWatchViz.getActive().setFilters(this.viz.filters);
-      }
+    applyVizFilters() {
+      const f = { minConf: this.vizMinConf, cameraId: this.vizCameraId, hours: this.vizHours };
+      if (BirdWatchViz.hasActive()) BirdWatchViz.getActive().setFilters(f);
       this.loadVizData();
     },
 
     resetVizZoom() {
-      if (BirdWatchViz.hasActive()) {
-        BirdWatchViz.getActive().setFilters(this.viz.filters);
-      }
+      const f = { minConf: this.vizMinConf, cameraId: this.vizCameraId, hours: this.vizHours };
+      if (BirdWatchViz.hasActive()) BirdWatchViz.getActive().setFilters(f);
     },
 
     cameraStatusClass(status) {

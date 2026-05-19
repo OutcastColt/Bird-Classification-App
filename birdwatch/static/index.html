@@ -318,9 +318,9 @@
 
     <!-- Sub-navigation (one button per chart type; add more here as they're built) -->
     <div class="viz-subnav">
-      <button :class="viz.chartType==='timeline' ? 'active' : ''"
-              @click="viz.chartType='timeline'; mountViz()">Timeline</button>
-      <!-- Future: @click="viz.chartType='heatmap'; mountViz()" -->
+      <button :class="vizChartType==='timeline' ? 'active' : ''"
+              @click="vizChartType='timeline'; mountViz()">Timeline</button>
+      <!-- Future chart types: register in viz.js and add a button here -->
     </div>
 
     <!-- Controls bar -->
@@ -329,17 +329,17 @@
       <div class="viz-ctrl-group">
         <span class="viz-ctrl-label">Time range</span>
         <div class="viz-btn-group">
-          <button :class="viz.filters.hours===1   ?'active':''" @click="setVizFilters({hours:1})">1h</button>
-          <button :class="viz.filters.hours===6   ?'active':''" @click="setVizFilters({hours:6})">6h</button>
-          <button :class="viz.filters.hours===24  ?'active':''" @click="setVizFilters({hours:24})">24h</button>
-          <button :class="viz.filters.hours===168 ?'active':''" @click="setVizFilters({hours:168})">7d</button>
+          <button :class="vizHours===1   ?'active':''" @click="vizHours=1;   applyVizFilters()">1h</button>
+          <button :class="vizHours===6   ?'active':''" @click="vizHours=6;   applyVizFilters()">6h</button>
+          <button :class="vizHours===24  ?'active':''" @click="vizHours=24;  applyVizFilters()">24h</button>
+          <button :class="vizHours===168 ?'active':''" @click="vizHours=168; applyVizFilters()">7d</button>
         </div>
       </div>
 
       <!-- Camera filter -->
       <div class="viz-ctrl-group">
         <span class="viz-ctrl-label">Camera</span>
-        <select x-model="viz.filters.cameraId" @change="setVizFilters({cameraId: viz.filters.cameraId})">
+        <select x-model="vizCameraId" @change="applyVizFilters()">
           <option value="">All cameras</option>
           <template x-for="cam in cameras" :key="cam.id">
             <option :value="cam.id" x-text="cam.name || cam.id"></option>
@@ -350,11 +350,11 @@
       <!-- Min confidence -->
       <div class="viz-ctrl-group">
         <span class="viz-ctrl-label">Min confidence:
-          <b style="color:#68d391" x-text="Math.round(viz.filters.minConf * 100) + '%'"></b>
+          <b style="color:#68d391" x-text="Math.round(vizMinConf * 100) + '%'"></b>
         </span>
         <input type="range" min="0" max="1" step="0.05"
-               x-model.number="viz.filters.minConf"
-               @change="setVizFilters({minConf: viz.filters.minConf})"
+               x-model.number="vizMinConf"
+               @change="applyVizFilters()"
                style="width:120px;accent-color:#68d391">
       </div>
 
@@ -364,12 +364,12 @@
 
     <!-- Chart card -->
     <div class="card" style="padding:.75rem;position:relative;min-height:200px">
-      <div x-show="viz.loading"
+      <div x-show="vizLoading"
            style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(15,17,23,.7);z-index:10;border-radius:8px;color:#a0aec0">
         Loading detections...
       </div>
       <div id="viz-chart" style="width:100%;overflow:hidden"></div>
-      <p x-show="!viz.loading && tab==='viz'"
+      <p x-show="!vizLoading && tab==='viz'"
          style="font-size:.8rem;color:#718096;margin-top:.5rem;text-align:center">
         Scroll to zoom &bull; Drag to pan &bull; Click a dot to play clip &amp; view species
       </p>
