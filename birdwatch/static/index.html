@@ -59,10 +59,16 @@
             <div style="display:flex;align-items:center;gap:.6rem;padding:.4rem 0;border-bottom:1px solid #2d3748;cursor:pointer"
                  @click="openBirdPanel(s.species_common, s.species_sci)">
               <span style="font-size:.75rem;color:#718096;min-width:1.2rem;text-align:right" x-text="i+1"></span>
-              <img class="bird-thumb" x-show="birdImages[s.species_common]"
-                   :src="birdImages[s.species_common] || ''"
+              <img class="bird-thumb" x-show="birdImgKey(s.species_sci, s.species_common)"
+                   :src="birdImgKey(s.species_sci, s.species_common)"
                    :alt="s.species_common">
-              <div style="flex:1;font-size:.9rem" x-text="s.species_common"></div>
+              <div style="flex:1;font-size:.9rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
+                <span x-text="s.species_common"></span>
+                <span x-show="consv(s.species_sci, s.species_common)"
+                      :style="conservationStyle(consv(s.species_sci, s.species_common)?.code)"
+                      style="font-size:.68rem;padding:.1rem .45rem;border-radius:999px;font-weight:700"
+                      x-text="consv(s.species_sci, s.species_common)?.code"></span>
+              </div>
               <span class="conf-badge" style="background:#276749;color:#c6f6d5;border-radius:999px" x-text="s.c + ' seen'"></span>
             </div>
           </template>
@@ -78,7 +84,13 @@
                  :src="birdImg(det)" :alt="det.species_common"
                  style="cursor:pointer" @click="openBirdPanel(det.species_common, det.species_sci)">
             <span class="conf-badge" x-text="formatConf(det.confidence)"></span>
-            <span class="species" style="cursor:pointer" @click="openBirdPanel(det.species_common, det.species_sci)" x-text="det.species_common"></span>
+            <span style="flex:1;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;cursor:pointer" @click="openBirdPanel(det.species_common, det.species_sci)">
+              <span class="species" x-text="det.species_common"></span>
+              <span x-show="consv(det.species_sci, det.species_common)"
+                    :style="conservationStyle(consv(det.species_sci, det.species_common)?.code)"
+                    style="font-size:.68rem;padding:.1rem .45rem;border-radius:999px;font-weight:700"
+                    x-text="consv(det.species_sci, det.species_common)?.code"></span>
+            </span>
             <span class="cam-label" x-text="det.camera_id"></span>
             <span class="time-label" x-text="formatTime(det.timestamp)"></span>
             <button class="play-btn" @click="playClip(det.clip_path)">&#9654; Play</button>
@@ -118,7 +130,13 @@
                        style="cursor:pointer" @click="openBirdPanel(row.species_common, row.species_sci)">
                 </td>
                 <td x-text="formatTime(row.timestamp)"></td>
-                <td style="cursor:pointer;color:#68d391" @click="openBirdPanel(row.species_common, row.species_sci)" x-text="row.species_common"></td>
+                <td style="cursor:pointer" @click="openBirdPanel(row.species_common, row.species_sci)">
+                  <span style="color:#68d391" x-text="row.species_common"></span>
+                  <span x-show="consv(row.species_sci, row.species_common)"
+                        :style="conservationStyle(consv(row.species_sci, row.species_common)?.code)"
+                        style="font-size:.68rem;padding:.1rem .45rem;border-radius:999px;font-weight:700;margin-left:.4rem"
+                        x-text="consv(row.species_sci, row.species_common)?.code"></span>
+                </td>
                 <td x-text="formatConf(row.confidence)"></td>
                 <td x-text="row.camera_id"></td>
                 <td><button class="play-btn" @click="playClip(row.clip_path)">&#9654;</button></td>

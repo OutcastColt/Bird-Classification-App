@@ -108,7 +108,7 @@ main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
   min-width: 3.5rem;
   text-align: center;
 }
-.species { flex: 1; font-weight: 600; }
+.species { font-weight: 600; }
 .cam-label { color: #a0aec0; font-size: .8rem; }
 .time-label { color: #718096; font-size: .75rem; min-width: 6rem; }
 button.play-btn {

@@ -10,7 +10,8 @@ document.addEventListener('alpine:init', () => {
     wsConnected: false,
     MAX_LIVE: 50,
     detectionSummary: { total: 0, today: 0, top_species: [] },
-    birdImages: {},  // cache: { 'Cardinalis cardinalis': 'https://...' }
+    birdImages: {},         // { sciName: imageUrl }
+    speciesConservation: {}, // { sciName: { code: 'LC', label: 'Least Concern' } }
 
     // Bird info side panel
     birdPanel: {
@@ -89,22 +90,48 @@ document.addEventListener('alpine:init', () => {
 
     fetchBirdImage(commonName, sciName) {
       const key = sciName || commonName;
-      if (key in this.birdImages) return;    // already cached or in-flight
-      this.birdImages = { ...this.birdImages, [key]: null };  // mark in-flight
+      if (key in this.birdImages) return;
+      this.birdImages = { ...this.birdImages, [key]: null };
       const query = encodeURIComponent((sciName || commonName).replace(/ /g, '_'));
       fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${query}`)
         .then(r => r.ok ? r.json() : null)
         .then(data => {
-          const url = data?.thumbnail?.source || '';
-          this.birdImages = { ...this.birdImages, [key]: url };
+          this.birdImages = { ...this.birdImages, [key]: data?.thumbnail?.source || '' };
         })
-        .catch(() => {
-          this.birdImages = { ...this.birdImages, [key]: '' };
-        });
+        .catch(() => { this.birdImages = { ...this.birdImages, [key]: '' }; });
+      // Fetch conservation status in parallel
+      this.fetchConservation(commonName, sciName);
+    },
+
+    fetchConservation(commonName, sciName) {
+      const key = sciName || commonName;
+      if (key in this.speciesConservation) return;
+      this.speciesConservation = { ...this.speciesConservation, [key]: null };
+      fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sciName || commonName)}&rank=species&per_page=1`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          const status = data?.results?.[0]?.conservation_status;
+          const entry = status
+            ? { code: (status.status || '').toUpperCase(), label: status.status_name || '' }
+            : { code: '', label: '' };
+          this.speciesConservation = { ...this.speciesConservation, [key]: entry };
+        })
+        .catch(() => { this.speciesConservation = { ...this.speciesConservation, [key]: { code: '', label: '' } }; });
+    },
+
+    // Returns conservation entry { code, label } or null if not loaded / no status
+    consv(sciName, commonName) {
+      const d = this.speciesConservation[sciName || commonName];
+      return d && d.code ? d : null;
     },
 
     birdImg(det) {
       const key = det.species_sci || det.species_common;
+      return key ? (this.birdImages[key] || '') : '';
+    },
+
+    birdImgKey(sciName, commonName) {
+      const key = sciName || commonName;
       return key ? (this.birdImages[key] || '') : '';
     },
 
