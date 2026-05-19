@@ -81,7 +81,8 @@ async def _result_consumer(
                 lat=raw.get("lat"),
                 lon=raw.get("lon"),
             )
-            insert_detection(det)
+            det_id = insert_detection(det)
+            raw["id"] = det_id   # include DB id in WS payload for dedup
         except Exception as exc:
             logger.error("DB write failed: %s", exc)
 

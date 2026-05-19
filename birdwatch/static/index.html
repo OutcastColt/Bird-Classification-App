@@ -43,7 +43,7 @@
       </div>
       <div class="card">
         <h2>Recent Detections</h2>
-        <template x-for="det in liveDetections" :key="det.timestamp+det.camera_id+det.species_common">
+        <template x-for="det in liveDetections" :key="det.id || (det.timestamp+det.camera_id+det.species_common+det.confidence)">
           <div class="detection-row">
             <span class="conf-badge" x-text="formatConf(det.confidence)"></span>
             <span class="species" x-text="det.species_common"></span>

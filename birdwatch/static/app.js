@@ -44,17 +44,34 @@ document.addEventListener('alpine:init', () => {
     connectWS() {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const ws = new WebSocket(`${proto}://${location.host}/ws/detections`);
-      ws.onopen = () => { this.wsConnected = true; };
+      ws.onopen = async () => {
+        this.wsConnected = true;
+        // Pre-populate live feed from DB so detections missed before WS connected show up
+        await this.loadRecentDetections();
+      };
       ws.onclose = () => {
         this.wsConnected = false;
         setTimeout(() => this.connectWS(), 3000);
       };
       ws.onmessage = (e) => {
         const det = JSON.parse(e.data);
+        // Avoid duplicates: skip if same id already in list
+        if (det.id && this.liveDetections.some(d => d.id === det.id)) return;
         this.liveDetections.unshift(det);
         if (this.liveDetections.length > this.MAX_LIVE)
           this.liveDetections.pop();
       };
+    },
+
+    async loadRecentDetections() {
+      try {
+        const r = await fetch(`/api/detections?limit=${this.MAX_LIVE}`);
+        const rows = await r.json();
+        // Merge with any detections already received via WS (keep WS ones at front)
+        const existingIds = new Set(this.liveDetections.map(d => d.id).filter(Boolean));
+        const newRows = rows.filter(d => !existingIds.has(d.id));
+        this.liveDetections = [...this.liveDetections, ...newRows].slice(0, this.MAX_LIVE);
+      } catch (e) { /* non-fatal */ }
     },
 
     async loadCameraStatuses() {
