@@ -1,6 +1,6 @@
 from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from birdwatch.config import CameraConfig
 import birdwatch.database as dbmod
 
@@ -12,6 +12,13 @@ class CameraBody(BaseModel):
     name: str
     stream_url: str
     enabled: bool = True
+
+    @field_validator("id", "name", "stream_url")
+    @classmethod
+    def not_empty(cls, v: str, info) -> str:
+        if not v or not v.strip():
+            raise ValueError(f"{info.field_name} must not be empty")
+        return v.strip()
 
 
 def _camera_config(body: CameraBody) -> CameraConfig:

@@ -94,6 +94,10 @@ document.addEventListener('alpine:init', () => {
     },
 
     async saveCamera() {
+      if (!this.newCam.id.trim() || !this.newCam.name.trim() || !this.newCam.stream_url.trim()) {
+        alert('ID, Name, and Stream URL are all required and cannot be empty.');
+        return;
+      }
       const url = this.editingCam ? `/api/cameras/${this.newCam.id}` : '/api/cameras';
       const method = this.editingCam ? 'PUT' : 'POST';
       const r = await fetch(url, {
