@@ -27,8 +27,7 @@
 <main>
 
   <!-- LIVE -->
-  <template x-if="tab==='live'">
-    <div>
+  <div x-show="tab==='live'">
       <div class="card">
         <h2>Camera Status</h2>
         <div class="cam-grid">
@@ -57,12 +56,10 @@
           Waiting for detections...
         </p>
       </div>
-    </div>
-  </template>
+  </div>
 
   <!-- HISTORY -->
-  <template x-if="tab==='history'">
-    <div>
+  <div x-show="tab==='history'">
       <div class="card">
         <h2>Filter</h2>
         <div class="form-row">
@@ -101,12 +98,10 @@
           <button @click="histNext()" :disabled="historyRows.length < histLimit">Next</button>
         </div>
       </div>
-    </div>
-  </template>
+  </div>
 
   <!-- CAMERAS -->
-  <template x-if="tab==='cameras'">
-    <div>
+  <div x-show="tab==='cameras'">
       <div class="card" id="camera-form">
         <h2 x-text="editingCam ? 'Edit Camera' : 'Add Camera'"></h2>
         <div x-show="camSaved" class="alert-success">Camera saved.</div>
@@ -147,12 +142,10 @@
           </tbody>
         </table>
       </div>
-    </div>
-  </template>
+  </div>
 
   <!-- SETTINGS -->
-  <template x-if="tab==='settings'">
-    <div>
+  <div x-show="tab==='settings'">
       <div class="card">
         <h2>Location &amp; BirdNET</h2>
         <div x-show="settingsSaved" class="alert-success">Settings saved.</div>
@@ -202,8 +195,7 @@
           </tbody>
         </table>
       </div>
-    </div>
-  </template>
+  </div>
 
 </main>
 </body>
