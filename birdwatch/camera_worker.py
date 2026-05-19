@@ -14,13 +14,21 @@ CHUNK_BYTES = BYTES_PER_SEC * CHUNK_SECONDS             # 288000
 
 
 def build_ffmpeg_cmd(stream_url: str) -> list[str]:
-    """Build the FFmpeg command list for a given RTSP or RTSPS URL."""
+    """Build the FFmpeg command list for a given RTSP or RTSPS URL.
+
+    UniFi cameras expose multiple streams (AAC audio, Opus audio, H264 video).
+    We explicitly select the first audio stream (0:a:0, typically AAC) and
+    increase probesize/analyzeduration so FFmpeg can identify all streams before
+    starting to decode.
+    """
     cmd = ["ffmpeg", "-rtsp_transport", "tcp"]
     if stream_url.startswith("rtsps://"):
         cmd += ["-tls_verify", "0"]   # UniFi uses self-signed certs
     cmd += [
+        "-probesize", "50M",           # allow more data for stream detection
+        "-analyzeduration", "10M",     # allow more time to analyze multi-stream feeds
         "-i", stream_url,
-        "-vn",                         # discard video
+        "-map", "0:a:0",               # explicitly select first audio stream (AAC)
         "-ar", str(SAMPLE_RATE),
         "-ac", str(CHANNELS),
         "-f", "s16le",                 # raw 16-bit little-endian PCM
