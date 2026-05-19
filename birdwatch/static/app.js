@@ -10,6 +10,7 @@ document.addEventListener('alpine:init', () => {
     wsConnected: false,
     MAX_LIVE: 50,
     detectionSummary: { total: 0, today: 0, top_species: [] },
+    birdImages: {},  // cache: { 'Cardinalis cardinalis': 'https://...' }
 
     // History
     historyRows: [],
@@ -63,6 +64,7 @@ document.addEventListener('alpine:init', () => {
         this.liveDetections.unshift(det);
         if (this.liveDetections.length > this.MAX_LIVE)
           this.liveDetections.pop();
+        this.fetchBirdImage(det.species_common, det.species_sci);
         this.loadDetectionSummary();
       };
     },
@@ -71,7 +73,31 @@ document.addEventListener('alpine:init', () => {
       try {
         const r = await fetch('/api/detections/summary');
         this.detectionSummary = await r.json();
+        // Pre-fetch images for top species
+        for (const s of this.detectionSummary.top_species)
+          this.fetchBirdImage(s.species_common, s.species_sci || s.species_common);
       } catch (e) { /* non-fatal */ }
+    },
+
+    fetchBirdImage(commonName, sciName) {
+      const key = sciName || commonName;
+      if (key in this.birdImages) return;    // already cached or in-flight
+      this.birdImages = { ...this.birdImages, [key]: null };  // mark in-flight
+      const query = encodeURIComponent((sciName || commonName).replace(/ /g, '_'));
+      fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${query}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          const url = data?.thumbnail?.source || '';
+          this.birdImages = { ...this.birdImages, [key]: url };
+        })
+        .catch(() => {
+          this.birdImages = { ...this.birdImages, [key]: '' };
+        });
+    },
+
+    birdImg(det) {
+      const key = det.species_sci || det.species_common;
+      return key ? (this.birdImages[key] || '') : '';
     },
 
     async loadRecentDetections() {
@@ -82,6 +108,8 @@ document.addEventListener('alpine:init', () => {
         const existingIds = new Set(this.liveDetections.map(d => d.id).filter(Boolean));
         const newRows = rows.filter(d => !existingIds.has(d.id));
         this.liveDetections = [...this.liveDetections, ...newRows].slice(0, this.MAX_LIVE);
+        for (const d of this.liveDetections)
+          this.fetchBirdImage(d.species_common, d.species_sci);
       } catch (e) { /* non-fatal */ }
     },
 
@@ -101,6 +129,8 @@ document.addEventListener('alpine:init', () => {
       if (this.histFilter.date_to)   p.set('date_to',   this.histFilter.date_to   + 'T23:59:59');
       const r = await fetch(`/api/detections?${p}`);
       this.historyRows = await r.json();
+      for (const d of this.historyRows)
+        this.fetchBirdImage(d.species_common, d.species_sci);
     },
 
     histPrev() { if (this.histPage > 0) { this.histPage--; this.loadHistory(); } },

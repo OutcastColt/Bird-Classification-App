@@ -62,6 +62,15 @@ main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
 .cam-badge.starting   { background: #2d3748; color: #a0aec0; }
 .cam-badge.disabled   { background: #2d3748; color: #718096; }
 
+.bird-thumb {
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background: #2d3748;
+}
+
 .detection-row {
   display: flex;
   align-items: center;
