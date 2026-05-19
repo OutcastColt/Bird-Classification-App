@@ -68,8 +68,9 @@ document.addEventListener('alpine:init', () => {
       const p = new URLSearchParams({ limit: this.histLimit, offset: this.histPage * this.histLimit });
       if (this.histFilter.camera_id) p.set('camera_id', this.histFilter.camera_id);
       if (this.histFilter.species) p.set('species', this.histFilter.species);
-      if (this.histFilter.date_from) p.set('date_from', this.histFilter.date_from);
-      if (this.histFilter.date_to) p.set('date_to', this.histFilter.date_to);
+      // Append time so date-only strings compare correctly with stored ISO datetimes
+      if (this.histFilter.date_from) p.set('date_from', this.histFilter.date_from + 'T00:00:00');
+      if (this.histFilter.date_to)   p.set('date_to',   this.histFilter.date_to   + 'T23:59:59');
       const r = await fetch(`/api/detections?${p}`);
       this.historyRows = await r.json();
     },
