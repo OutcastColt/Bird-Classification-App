@@ -42,11 +42,13 @@ document.addEventListener('alpine:init', () => {
     weather: { temp: null, desc: '', symbol: '', wind: null, loading: false },
 
     // Visualization tab (flat top-level properties — Alpine resolves these reliably)
-    vizChartType: 'timeline',
-    vizLoading:   false,
-    vizMinConf:   0.5,
-    vizCameraId:  '',
-    vizHours:     24,
+    vizChartType:      'timeline',
+    vizLoading:        false,
+    vizMinConf:        0.5,
+    vizCameraId:       '',
+    vizHours:          24,
+    vizTopN:           15,        // species confidence chart: top N species
+    vizSelectedSpecies: '',       // cross-chart: species selected in confidence chart
 
     // Alert rules
     alertRules: [],
@@ -394,9 +396,11 @@ document.addEventListener('alpine:init', () => {
     async mountViz() {
       const container = document.getElementById('viz-chart');
       if (!container) return;
+      this.vizSelectedSpecies = '';   // clear cross-chart selection on chart switch
       BirdWatchViz.mount(this.vizChartType, container, {
-        onPlayClip:  clipPath => this.playClip(clipPath),
-        onOpenPanel: (common, sci) => this.openBirdPanel(common, sci),
+        onPlayClip:      clipPath => this.playClip(clipPath),
+        onOpenPanel:     (common, sci) => this.openBirdPanel(common, sci),
+        onSpeciesSelect: species => { this.vizSelectedSpecies = species || ''; },
       });
       await this.loadVizData();
     },
@@ -414,8 +418,18 @@ document.addEventListener('alpine:init', () => {
     },
 
     applyVizFilters() {
-      const f = { minConf: this.vizMinConf, cameraId: this.vizCameraId, hours: this.vizHours };
-      if (BirdWatchViz.hasActive()) BirdWatchViz.getActive().setFilters(f);
+      const f = {
+        minConf:  this.vizMinConf,
+        cameraId: this.vizCameraId,
+        hours:    this.vizHours,
+        // species filter applies to timeline only; confidence chart shows all species
+        species:  this.vizChartType === 'timeline' ? this.vizSelectedSpecies : '',
+      };
+      if (BirdWatchViz.hasActive()) {
+        const chart = BirdWatchViz.getActive();
+        chart.setFilters(f);
+        if (typeof chart.setTopN === 'function') chart.setTopN(this.vizTopN);
+      }
       this.loadVizData();
     },
 

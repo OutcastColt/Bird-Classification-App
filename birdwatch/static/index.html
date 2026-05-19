@@ -318,9 +318,10 @@
 
     <!-- Sub-navigation (one button per chart type; add more here as they're built) -->
     <div class="viz-subnav">
-      <button :class="vizChartType==='timeline' ? 'active' : ''"
-              @click="vizChartType='timeline'; mountViz()">Timeline</button>
-      <!-- Future chart types: register in viz.js and add a button here -->
+      <button :class="vizChartType==='timeline'    ? 'active' : ''"
+              @click="vizChartType='timeline';    mountViz()">Timeline</button>
+      <button :class="vizChartType==='speciesconf' ? 'active' : ''"
+              @click="vizChartType='speciesconf'; mountViz()">Species Confidence</button>
     </div>
 
     <!-- Controls bar -->
@@ -358,8 +359,29 @@
                style="width:120px;accent-color:#68d391">
       </div>
 
-      <!-- Reset zoom -->
-      <button class="btn" style="margin-left:auto;font-size:.8rem" @click="resetVizZoom()">Reset Zoom</button>
+      <!-- Top N (species confidence chart only) -->
+      <div class="viz-ctrl-group" x-show="vizChartType==='speciesconf'">
+        <span class="viz-ctrl-label">Show</span>
+        <div class="viz-btn-group">
+          <button :class="vizTopN===10 ?'active':''" @click="vizTopN=10;  applyVizFilters()">Top 10</button>
+          <button :class="vizTopN===15 ?'active':''" @click="vizTopN=15;  applyVizFilters()">Top 15</button>
+          <button :class="vizTopN===25 ?'active':''" @click="vizTopN=25;  applyVizFilters()">Top 25</button>
+          <button :class="vizTopN===0  ?'active':''" @click="vizTopN=0;   applyVizFilters()">All</button>
+        </div>
+      </div>
+
+      <!-- Selected species cross-filter indicator -->
+      <div class="viz-ctrl-group" x-show="vizSelectedSpecies">
+        <span class="viz-ctrl-label" style="color:#68d391">
+          Filtering: <b x-text="vizSelectedSpecies"></b>
+        </span>
+        <button class="btn" style="font-size:.75rem;padding:.2rem .5rem;background:#4a5568"
+                @click="vizSelectedSpecies=''; applyVizFilters()">Clear</button>
+      </div>
+
+      <!-- Reset zoom (timeline only) -->
+      <button x-show="vizChartType==='timeline'"
+              class="btn" style="margin-left:auto;font-size:.8rem" @click="resetVizZoom()">Reset Zoom</button>
     </div>
 
     <!-- Chart card -->
@@ -369,9 +391,13 @@
         Loading detections...
       </div>
       <div id="viz-chart" style="width:100%;overflow:hidden"></div>
-      <p x-show="!vizLoading && tab==='viz'"
+      <p x-show="!vizLoading && vizChartType==='timeline'"
          style="font-size:.8rem;color:#718096;margin-top:.5rem;text-align:center">
         Scroll to zoom &bull; Drag to pan &bull; Click a dot to play clip &amp; view species
+      </p>
+      <p x-show="!vizLoading && vizChartType==='speciesconf'"
+         style="font-size:.8rem;color:#718096;margin-top:.5rem;text-align:center">
+        Bar color = avg confidence (red=low, green=high) &bull; Click a bar to filter the Timeline
       </p>
     </div>
 

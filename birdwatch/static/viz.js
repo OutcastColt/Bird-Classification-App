@@ -177,7 +177,8 @@ class TimelineChart {
     this._view = this._raw.filter(d =>
       d.confidence >= this._filters.minConf &&
       new Date(d.timestamp) >= cutoff &&
-      (!this._filters.cameraId || d.camera_id === this._filters.cameraId)
+      (!this._filters.cameraId || d.camera_id === this._filters.cameraId) &&
+      (!this._filters.species  || d.species_common === this._filters.species)
     );
 
     // Species sorted by detection count descending
@@ -323,5 +324,234 @@ class TimelineChart {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Species Confidence Chart — horizontal bar chart, aggregated from raw detections
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+class SpeciesConfidenceChart {
+
+  constructor(container, options = {}) {
+    this.el              = container;
+    this.onSpeciesSelect = options.onSpeciesSelect || (() => {});
+
+    this._raw      = [];
+    this._topN     = 15;
+    this._selected = null;
+    this._filters  = { minConf: 0.5, hours: 24, cameraId: '' };
+
+    // Red(low) → Yellow → Green(high) confidence color scale
+    this._confColor = d3.scaleSequential(d3.interpolateRdYlGn).domain([0.5, 1.0]);
+
+    this._margin = { top: 20, right: 110, bottom: 50, left: 185 };
+    this._init();
+  }
+
+  /* ── Setup ──────────────────────────────────────────────────────────── */
+  _init() {
+    d3.select(this.el).selectAll('*').remove();
+
+    const W = this._chartW();
+
+    this._svg = d3.select(this.el).append('svg')
+      .attr('width',  W + this._margin.left + this._margin.right)
+      .attr('height', 100);
+
+    const defs = this._svg.append('defs');
+    const grad = defs.append('linearGradient').attr('id', 'bw-conf-grad')
+      .attr('x1', '0%').attr('x2', '100%');
+    grad.append('stop').attr('offset',   '0%').attr('stop-color', this._confColor(0.50));
+    grad.append('stop').attr('offset',  '50%').attr('stop-color', this._confColor(0.75));
+    grad.append('stop').attr('offset', '100%').attr('stop-color', this._confColor(1.00));
+
+    this._g    = this._svg.append('g')
+      .attr('transform', `translate(${this._margin.left},${this._margin.top})`);
+    this._gBars = this._g.append('g');
+    this._gX    = this._g.append('g');
+    this._gY    = this._g.append('g');
+
+    // X axis label
+    this._g.append('text').attr('class', 'bw-xlabel')
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#a0aec0').attr('font-size', '11px');
+
+    // Confidence legend (top-right corner)
+    const leg = this._g.append('g').attr('class', 'bw-sc-legend');
+    leg.append('rect').attr('width', 80).attr('height', 8).attr('rx', 2)
+      .attr('fill', 'url(#bw-conf-grad)');
+    leg.append('text').attr('y', 18).attr('fill', '#718096').attr('font-size', '10px').text('50%');
+    leg.append('text').attr('class', 'leg-hi').attr('y', 18)
+      .attr('fill', '#718096').attr('font-size', '10px').text('100%');
+    leg.append('text').attr('y', -4).attr('fill', '#a0aec0').attr('font-size', '10px')
+      .text('Avg Confidence');
+
+    // Tooltip
+    this._tip = d3.select(this.el).append('div')
+      .attr('class', 'viz-tip').style('display', 'none');
+
+    this._xScale = d3.scaleLinear().range([0, W]);
+    this._yScale = d3.scaleBand().paddingInner(0.25).paddingOuter(0.12);
+
+    this._ro = new ResizeObserver(() => this.resize());
+    this._ro.observe(this.el);
+  }
+
+  /* ── Public API ───────────────────────────────────────────────────── */
+
+  update(data) {
+    this._raw = Array.isArray(data) ? data : [];
+    this._render();
+  }
+
+  setFilters(f) {
+    this._filters = { ...this._filters, ...f };
+    this._render();
+  }
+
+  setTopN(n) {
+    this._topN = n;
+    this._render();
+  }
+
+  resize() {
+    const W = this._chartW();
+    this._xScale.range([0, W]);
+    this._svg.attr('width', W + this._margin.left + this._margin.right);
+    this._render();
+  }
+
+  destroy() {
+    if (this._ro) this._ro.disconnect();
+    d3.select(this.el).selectAll('*').remove();
+  }
+
+  /* ── Internal ────────────────────────────────────────────────────── */
+
+  _chartW() {
+    const w = this.el.getBoundingClientRect().width || 800;
+    return Math.max(200, w - this._margin.left - this._margin.right);
+  }
+
+  _aggregate() {
+    const cutoff = new Date(Date.now() - this._filters.hours * 3600000);
+    const src    = this._raw.filter(d =>
+      d.confidence >= this._filters.minConf &&
+      new Date(d.timestamp) >= cutoff &&
+      (!this._filters.cameraId || d.camera_id === this._filters.cameraId)
+    );
+
+    const groups = d3.group(src, d => d.species_common);
+    const result = [];
+    for (const [species, dets] of groups) {
+      const confs = dets.map(d => d.confidence);
+      result.push({
+        species,
+        species_sci: dets[0].species_sci || '',
+        count:   dets.length,
+        avgConf: d3.mean(confs),
+        minConf: d3.min(confs),
+        maxConf: d3.max(confs),
+      });
+    }
+    result.sort((a, b) => b.count - a.count);
+    return this._topN > 0 ? result.slice(0, this._topN) : result;
+  }
+
+  _render() {
+    const data = this._aggregate();
+    const W    = this._chartW();
+    const H    = Math.max(60, data.length * 40);
+
+    this._svg
+      .attr('width',  W + this._margin.left + this._margin.right)
+      .attr('height', H + this._margin.top  + this._margin.bottom);
+
+    this._xScale.domain([0, d3.max(data, d => d.count) || 1]).range([0, W]);
+    this._yScale.domain(data.map(d => d.species)).range([0, H]);
+
+    // X axis
+    this._gX.attr('transform', `translate(0,${H})`)
+      .call(d3.axisBottom(this._xScale).ticks(5).tickFormat(d3.format('d')));
+    this._gX.select('.domain').style('stroke', '#2d3748');
+    this._gX.selectAll('.tick line').style('stroke', '#2d3748');
+    this._gX.selectAll('.tick text').style('fill', '#a0aec0').style('font-size', '11px');
+
+    this._g.select('.bw-xlabel')
+      .attr('x', W / 2)
+      .attr('y', H + 40)
+      .text('Detection Count');
+
+    // Y axis
+    this._gY.call(d3.axisLeft(this._yScale).tickSize(0).tickPadding(8));
+    this._gY.select('.domain').remove();
+    this._gY.selectAll('.tick text')
+      .style('fill',        d => d === this._selected ? '#68d391' : '#e2e8f0')
+      .style('font-weight', d => d === this._selected ? '700'     : '400')
+      .style('font-size', '12px')
+      .text(d => d.length > 22 ? d.slice(0, 20) + '…' : d);
+
+    // Legend position
+    this._g.select('.bw-sc-legend').attr('transform', `translate(${W - 78}, 0)`);
+    this._g.select('.leg-hi').attr('x', 68);
+
+    // ── Bars ────────────────────────────────────────────────────────
+    const self = this;
+    const bars = this._gBars.selectAll('rect.bw-sbar').data(data, d => d.species);
+
+    bars.enter().append('rect').attr('class', 'bw-sbar')
+      .attr('x', 0).attr('rx', 3).attr('cursor', 'pointer')
+      .on('mouseover', function(event, d) { self._showTip(event, d); })
+      .on('mouseout',  ()      => this._tip.style('display', 'none'))
+      .on('click',     (ev, d) => {
+        this._selected = this._selected === d.species ? null : d.species;
+        this.onSpeciesSelect(this._selected);
+        this._render();
+      })
+    .merge(bars)
+      .transition().duration(300)
+      .attr('y',       d => this._yScale(d.species))
+      .attr('height',  this._yScale.bandwidth())
+      .attr('width',   d => this._xScale(d.count))
+      .attr('fill',    d => this._confColor(d.avgConf))
+      .attr('opacity', d => this._selected && d.species !== this._selected ? 0.3 : 0.88);
+
+    bars.exit().transition().duration(150).attr('width', 0).remove();
+
+    // ── End labels (count + avg %) ──────────────────────────────────
+    const labels = this._gBars.selectAll('text.bw-sbar-lbl').data(data, d => d.species);
+
+    labels.enter().append('text').attr('class', 'bw-sbar-lbl')
+      .attr('fill', '#a0aec0').attr('font-size', '11px')
+    .merge(labels)
+      .transition().duration(300)
+      .attr('x', d => this._xScale(d.count) + 6)
+      .attr('y', d => this._yScale(d.species) + this._yScale.bandwidth() / 2 + 4)
+      .text(d => `${d.count}  ${Math.round(d.avgConf * 100)}%`)
+      .attr('opacity', d => this._selected && d.species !== this._selected ? 0.35 : 1);
+
+    labels.exit().remove();
+  }
+
+  _showTip(event, d) {
+    const bx = this.el.getBoundingClientRect();
+    const ex = event.clientX - bx.left;
+    const ey = event.clientY - bx.top;
+    const tx = ex > bx.width - 220 ? ex - 215 : ex + 14;
+
+    this._tip
+      .style('display', 'block')
+      .style('left', tx + 'px')
+      .style('top',  (ey - 8) + 'px')
+      .html(`
+        <div class="viz-tt-name">${d.species}</div>
+        ${d.species_sci ? `<div class="viz-tt-sci">${d.species_sci}</div>` : ''}
+        <div class="viz-tt-row"><b>Detections</b> ${d.count}</div>
+        <div class="viz-tt-row"><b>Avg confidence</b> ${Math.round(d.avgConf * 100)}%</div>
+        <div class="viz-tt-row"><b>Range</b> ${Math.round(d.minConf * 100)}% – ${Math.round(d.maxConf * 100)}%</div>
+        <div class="viz-tt-hint">Click to select &bull; filters timeline</div>
+      `);
+  }
+}
+
 /* ── Register built-in chart types ─────────────────────────────────────── */
-BirdWatchViz.register('timeline', TimelineChart);
+BirdWatchViz.register('timeline',    TimelineChart);
+BirdWatchViz.register('speciesconf', SpeciesConfidenceChart);
