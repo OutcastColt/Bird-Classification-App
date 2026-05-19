@@ -1,5 +1,23 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Bird info side panel */
+.bird-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 420px;
+  max-width: 95vw;
+  height: 100vh;
+  background: #1a1f2e;
+  border-left: 1px solid #2d3748;
+  z-index: 499;
+  overflow-y: auto;
+  transform: translateX(100%);
+  transition: transform .25s ease;
+  box-shadow: -4px 0 24px rgba(0,0,0,.4);
+}
+.bird-panel.open { transform: translateX(0); }
+
 body {
   font-family: system-ui, -apple-system, sans-serif;
   background: #0f1117;

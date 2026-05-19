@@ -12,6 +12,14 @@ document.addEventListener('alpine:init', () => {
     detectionSummary: { total: 0, today: 0, top_species: [] },
     birdImages: {},  // cache: { 'Cardinalis cardinalis': 'https://...' }
 
+    // Bird info side panel
+    birdPanel: {
+      open: false, loading: false,
+      common: '', sci: '', summary: '', image: '',
+      sections: [], conservation: '', conservationCode: '',
+      wikiUrl: '', recordings: [],
+    },
+
     // History
     historyRows: [],
     histPage: 0,
@@ -241,6 +249,96 @@ document.addEventListener('alpine:init', () => {
       const map = { connected: 'connected', reconnecting: 'reconnecting',
                     error: 'error', disabled: 'disabled', starting: 'starting' };
       return map[status] || 'starting';
+    },
+
+    // ── Bird info side panel ──────────────────────────────────────────────
+
+    async openBirdPanel(commonName, sciName) {
+      this.birdPanel = {
+        open: true, loading: true,
+        common: commonName, sci: sciName || '',
+        summary: '', image: this.birdImages[sciName || commonName] || '',
+        sections: [], conservation: '', conservationCode: '',
+        wikiUrl: '', recordings: [],
+      };
+
+      const query = encodeURIComponent((sciName || commonName).replace(/ /g, '_'));
+
+      // Wikipedia summary (description + thumbnail)
+      try {
+        const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${query}`);
+        if (r.ok) {
+          const d = await r.json();
+          this.birdPanel.summary  = d.extract || '';
+          if (d.thumbnail?.source) this.birdPanel.image = d.thumbnail.source;
+          this.birdPanel.wikiUrl  = d.content_urls?.desktop?.page || '';
+        }
+      } catch(e) {}
+
+      // Wikipedia article sections (Description, Habitat, Diet, Migration, Breeding…)
+      try {
+        const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/mobile-sections/${query}`);
+        if (r.ok) {
+          const d = await r.json();
+          const sections = [];
+          for (const s of (d.remaining?.sections || [])) {
+            if (s.toclevel === 1 && s.text) {
+              const text = s.text
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/\s+/g, ' ')
+                .replace(/\[[\d ,]+\]/g, '')
+                .trim();
+              if (text.length > 80) sections.push({ title: s.line, text, expanded: false });
+            }
+          }
+          this.birdPanel.sections = sections;
+        }
+      } catch(e) {}
+
+      // iNaturalist — conservation status + fallback image
+      try {
+        const r = await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sciName || commonName)}&rank=species&per_page=1`);
+        if (r.ok) {
+          const d = await r.json();
+          const t = d.results?.[0];
+          if (t) {
+            this.birdPanel.conservationCode = t.conservation_status?.status || '';
+            this.birdPanel.conservation     = t.conservation_status?.status_name || '';
+            if (!this.birdPanel.image && t.default_photo?.medium_url)
+              this.birdPanel.image = t.default_photo.medium_url;
+          }
+        }
+      } catch(e) {}
+
+      // Local recordings of this species from our own cameras
+      try {
+        const r = await fetch(`/api/detections?species=${encodeURIComponent(commonName)}&limit=5`);
+        if (r.ok) this.birdPanel.recordings = await r.json();
+      } catch(e) {}
+
+      this.birdPanel.loading = false;
+    },
+
+    closeBirdPanel() { this.birdPanel.open = false; },
+
+    toggleSection(i) {
+      this.birdPanel.sections[i] = {
+        ...this.birdPanel.sections[i],
+        expanded: !this.birdPanel.sections[i].expanded,
+      };
+    },
+
+    conservationStyle(code) {
+      const map = {
+        LC: 'background:#276749;color:#c6f6d5',
+        NT: 'background:#744210;color:#fefcbf',
+        VU: 'background:#7b341e;color:#fbd38d',
+        EN: 'background:#742a2a;color:#feb2b2',
+        CR: 'background:#4a1942;color:#fbb6ce',
+        EW: 'background:#4a1942;color:#fbb6ce',
+        EX: 'background:#2d3748;color:#a0aec0',
+      };
+      return map[(code || '').toUpperCase()] || 'background:#2d3748;color:#a0aec0';
     },
   }));
 });

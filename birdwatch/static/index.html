@@ -56,7 +56,8 @@
         <div x-show="detectionSummary.top_species.length > 0">
           <div style="font-size:.8rem;color:#a0aec0;margin-bottom:.5rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Top Species</div>
           <template x-for="(s, i) in detectionSummary.top_species" :key="s.species_common">
-            <div style="display:flex;align-items:center;gap:.6rem;padding:.4rem 0;border-bottom:1px solid #2d3748">
+            <div style="display:flex;align-items:center;gap:.6rem;padding:.4rem 0;border-bottom:1px solid #2d3748;cursor:pointer"
+                 @click="openBirdPanel(s.species_common, s.species_sci)">
               <span style="font-size:.75rem;color:#718096;min-width:1.2rem;text-align:right" x-text="i+1"></span>
               <img class="bird-thumb" x-show="birdImages[s.species_common]"
                    :src="birdImages[s.species_common] || ''"
@@ -74,9 +75,10 @@
         <template x-for="det in liveDetections" :key="det.id || (det.timestamp+det.camera_id+det.species_common+det.confidence)">
           <div class="detection-row">
             <img class="bird-thumb" x-show="birdImg(det)"
-                 :src="birdImg(det)" :alt="det.species_common">
+                 :src="birdImg(det)" :alt="det.species_common"
+                 style="cursor:pointer" @click="openBirdPanel(det.species_common, det.species_sci)">
             <span class="conf-badge" x-text="formatConf(det.confidence)"></span>
-            <span class="species" x-text="det.species_common"></span>
+            <span class="species" style="cursor:pointer" @click="openBirdPanel(det.species_common, det.species_sci)" x-text="det.species_common"></span>
             <span class="cam-label" x-text="det.camera_id"></span>
             <span class="time-label" x-text="formatTime(det.timestamp)"></span>
             <button class="play-btn" @click="playClip(det.clip_path)">&#9654; Play</button>
@@ -112,10 +114,11 @@
               <tr>
                 <td style="padding:.3rem .5rem">
                   <img class="bird-thumb" x-show="birdImg(row)"
-                       :src="birdImg(row)" :alt="row.species_common">
+                       :src="birdImg(row)" :alt="row.species_common"
+                       style="cursor:pointer" @click="openBirdPanel(row.species_common, row.species_sci)">
                 </td>
                 <td x-text="formatTime(row.timestamp)"></td>
-                <td x-text="row.species_common"></td>
+                <td style="cursor:pointer;color:#68d391" @click="openBirdPanel(row.species_common, row.species_sci)" x-text="row.species_common"></td>
                 <td x-text="formatConf(row.confidence)"></td>
                 <td x-text="row.camera_id"></td>
                 <td><button class="play-btn" @click="playClip(row.clip_path)">&#9654;</button></td>
@@ -232,5 +235,88 @@
   </div>
 
 </main>
+
+<!-- ── Bird Info Side Panel ───────────────────────────────────────────── -->
+<!-- Backdrop -->
+<div x-show="birdPanel.open" @click="closeBirdPanel()"
+     style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:498"></div>
+
+<!-- Panel -->
+<div :class="birdPanel.open ? 'bird-panel open' : 'bird-panel'">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:flex-start;gap:1rem;padding:1.25rem 1.25rem .75rem;border-bottom:1px solid #2d3748;position:sticky;top:0;background:#1a1f2e;z-index:1">
+    <img x-show="birdPanel.image" :src="birdPanel.image" :alt="birdPanel.common"
+         style="width:80px;height:80px;object-fit:cover;border-radius:8px;flex-shrink:0">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:1.2rem;font-weight:700;color:#e2e8f0;line-height:1.2" x-text="birdPanel.common"></div>
+      <div style="font-size:.85rem;color:#a0aec0;font-style:italic;margin:.2rem 0 .4rem" x-text="birdPanel.sci"></div>
+      <span x-show="birdPanel.conservation"
+            :style="conservationStyle(birdPanel.conservationCode)"
+            style="font-size:.72rem;padding:.2rem .6rem;border-radius:999px;font-weight:600"
+            x-text="birdPanel.conservation"></span>
+    </div>
+    <button @click="closeBirdPanel()"
+            style="background:none;border:none;color:#718096;font-size:1.5rem;cursor:pointer;line-height:1;flex-shrink:0">&times;</button>
+  </div>
+
+  <!-- Loading -->
+  <div x-show="birdPanel.loading" style="padding:2rem;text-align:center;color:#a0aec0">
+    Loading species information...
+  </div>
+
+  <!-- Content -->
+  <div x-show="!birdPanel.loading" style="padding:1.25rem">
+
+    <!-- Summary / Introduction -->
+    <p x-show="birdPanel.summary" x-text="birdPanel.summary"
+       style="font-size:.9rem;line-height:1.7;color:#e2e8f0;margin-bottom:1.25rem"></p>
+
+    <!-- Wikipedia sections -->
+    <template x-for="(section, i) in birdPanel.sections" :key="section.title">
+      <div style="margin-bottom:.75rem;border:1px solid #2d3748;border-radius:6px;overflow:hidden">
+        <button @click="toggleSection(i)"
+                style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:.6rem .9rem;background:#222736;border:none;color:#e2e8f0;cursor:pointer;font-size:.88rem;font-weight:600;text-align:left">
+          <span x-text="section.title"></span>
+          <span style="color:#68d391;font-size:1rem" x-text="section.expanded ? '−' : '+'"></span>
+        </button>
+        <div x-show="section.expanded" style="padding:.75rem .9rem;font-size:.87rem;line-height:1.7;color:#cbd5e0"
+             x-text="section.text"></div>
+      </div>
+    </template>
+
+    <!-- Your Recordings -->
+    <div x-show="birdPanel.recordings.length > 0" style="margin-top:1.25rem">
+      <div style="font-size:.8rem;font-weight:600;color:#68d391;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.6rem">
+        Your Recordings
+      </div>
+      <template x-for="rec in birdPanel.recordings" :key="rec.id">
+        <div style="display:flex;align-items:center;gap:.75rem;padding:.4rem 0;border-bottom:1px solid #2d3748;font-size:.85rem">
+          <span style="color:#a0aec0;font-size:.8rem;min-width:5rem" x-text="formatTime(rec.timestamp)"></span>
+          <span style="color:#a0aec0;flex:1" x-text="rec.camera_id"></span>
+          <span style="color:#68d391;font-size:.8rem" x-text="formatConf(rec.confidence)"></span>
+          <button class="play-btn" @click="playClip(rec.clip_path)">&#9654;</button>
+        </div>
+      </template>
+    </div>
+
+    <!-- External links -->
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1.5rem;padding-top:1rem;border-top:1px solid #2d3748">
+      <a x-show="birdPanel.wikiUrl" :href="birdPanel.wikiUrl" target="_blank" rel="noopener"
+         class="btn" style="font-size:.8rem;text-decoration:none">Wikipedia</a>
+      <a :href="'https://www.inaturalist.org/taxa?q=' + encodeURIComponent(birdPanel.sci || birdPanel.common)"
+         target="_blank" rel="noopener"
+         class="btn" style="font-size:.8rem;background:#2b6cb0;text-decoration:none">iNaturalist</a>
+      <a :href="'https://www.allaboutbirds.org/guide/' + birdPanel.common.replace(/ /g, '_')"
+         target="_blank" rel="noopener"
+         class="btn" style="font-size:.8rem;background:#744210;text-decoration:none">All About Birds</a>
+      <a :href="'https://ebird.org/search?q=' + encodeURIComponent(birdPanel.common)"
+         target="_blank" rel="noopener"
+         class="btn" style="font-size:.8rem;background:#276749;text-decoration:none">eBird</a>
+    </div>
+
+  </div>
+</div>
+
 </body>
 </html>

@@ -123,7 +123,7 @@ def get_detection_summary(db_path: Path = DB_PATH) -> dict:
             "SELECT COUNT(*) FROM detections WHERE timestamp>=?", (today,)
         ).fetchone()[0]
         top = conn.execute(
-            "SELECT species_common, COUNT(*) c FROM detections "
+            "SELECT species_common, species_sci, COUNT(*) c FROM detections "
             "GROUP BY species_common ORDER BY c DESC LIMIT 10"
         ).fetchall()
         by_cam = conn.execute(
