@@ -29,6 +29,9 @@ For GPU support (optional — Quadro K2100M / other OpenCL-capable card):
     sudo -u birdwatch python3.12 -m venv venv
     sudo -u birdwatch venv/bin/pip install -r requirements.txt
 
+Note: the first `pip install` downloads TensorFlow (~500 MB) and librosa (~300 MB).
+Allow 5–15 minutes depending on connection speed.
+
 ## Configuration
 
     cp config/config.example.yaml config/config.yaml
@@ -102,19 +105,32 @@ Useful commands:
 
 ### Manually (development / testing)
 
-    source venv/bin/activate
-    python main.py
+    sudo -u birdwatch /opt/birdwatch/venv/bin/python main.py
+
+Note: `source venv/bin/activate` does not work for the `birdwatch` service account
+(created with `-s /bin/false`). Use the full venv path shown above.
 
 ## Dashboard
 
-Open `http://<server-ip>:8080/` from any browser on your LAN.
+Open `https://<server-ip>/` (after HTTPS setup) or `http://<server-ip>:8080/` from
+any browser on your LAN.
 
 | Tab | Description |
 |-----|-------------|
-| Live | Real-time detection feed + camera status indicators |
-| History | Searchable/paginated detection log with audio playback |
-| Cameras | Add, edit, or remove RTSP/RTSPS streams |
-| Settings | Adjust location, confidence threshold, GPU mode, alert rules |
+| Live | Real-time detection feed, camera status, detection count, top-10 species |
+| History | Filterable/paginated log — filter by camera, species, conservation status, or date range. Audio playback. |
+| Cameras | Add, edit, or remove RTSP/RTSPS streams. Changes take effect immediately without restart. |
+| Settings | Adjust location, confidence threshold, GPU mode, inference workers, alert rules |
+
+**Bird images and species info** — every detected species shows a Wikipedia photo.
+Click any bird image or species name to open a side panel with:
+
+- Description, habitat, diet, migration, breeding, and conservation sections from Wikipedia
+- IUCN conservation status badge (colour-coded: green = Least Concern, red = Endangered)
+- Your own recorded clips of that species
+- Links to Wikipedia, iNaturalist, All About Birds, and eBird
+
+**Conservation status** is shown inline next to every species name throughout the dashboard.
 
 ## Alert Rules
 
@@ -143,52 +159,49 @@ Supported notification methods — configured via the Settings tab:
 
 ## Testing BirdNET
 
-Verify BirdNET is installed and detecting correctly using the included test script.
-It downloads a short public-domain Common Blackbird recording and runs it through
-the model, printing any detections found.
+Verify BirdNET is installed and working using the included test script.
+The script generates a synthetic audio file locally (no internet required) and
+runs it through the model to confirm the model loads and inference executes.
 
     cd /opt/birdwatch
-    source venv/bin/activate
-    python scripts/test_birdnet.py
+    sudo -u birdwatch venv/bin/python scripts/test_birdnet.py
 
 Expected output:
 
-    Downloading test audio from Wikimedia Commons...
-    Downloaded 124 KB -> /tmp/tmpXXXXXX.ogg
+    Generated synthetic test audio (3s chirp, 281 KB) -> /tmp/tmpXXXXXX.wav
 
     --- Step 1: Load BirdNET model ---
     Model loaded OK
 
-    --- Step 2: Analyse audio ---
-      File      : /tmp/tmpXXXXXX.ogg
-      Location  : 38.89, -77.03
-      Min conf  : 10%
-      Date      : 2026-05-19
+    --- Step 2: Run inference ---
+      File      : /tmp/tmpXXXXXX.wav
+      Audio     : synthetic chirp (no real bird — testing pipeline only)
 
     --- Step 3: Results ---
-    Species                        Scientific name                     Confidence
-    -----------------------------------------------------------------------------
-    Common Blackbird               Turdus merula                              91%
+    Inference completed successfully.
+    No real detections expected from a synthetic tone — BirdNET is working.
 
-    1 detection(s) found — BirdNET is working correctly.
+    To test with real audio:  python scripts/test_birdnet.py --audio /path/to/bird.wav
+
+To test with a real bird recording and your own coordinates:
+
+    sudo -u birdwatch venv/bin/python scripts/test_birdnet.py \
+      --audio /path/to/bird.wav --lat 38.89 --lon -77.03
 
 **Options:**
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--audio <path>` | Use a local audio file instead of downloading | (downloads sample) |
+| `--audio <path>` | Use a local audio file for real species detection | (generates synthetic tone) |
 | `--lat <float>` | Latitude for species filtering | 38.89 |
 | `--lon <float>` | Longitude for species filtering | -77.03 |
 | `--conf <float>` | Minimum confidence threshold | 0.10 |
 
-Example with a local file and your own coordinates:
-
-    python scripts/test_birdnet.py --audio /path/to/bird.wav --lat 51.5 --lon -0.1
-
 **Troubleshooting:**
 
-- `Failed to load model` — run `pip install -r requirements.txt` inside the venv; the model downloads automatically on first run (requires internet access)
-- `No detections` — try `--conf 0.05` or use a different audio file; the sample is a European species so location filtering may suppress it outside Europe
+- `No module named 'tensorflow'` — run `sudo -u birdwatch venv/bin/pip install -r requirements.txt`; TensorFlow downloads on first install (~500 MB, requires internet)
+- `No module named 'librosa'` — same fix; librosa is also in `requirements.txt`
+- `No detections` with real audio — try `--conf 0.05`, check that `--lat`/`--lon` match the recording location
 
 ## Upgrading
 
@@ -196,3 +209,14 @@ Example with a local file and your own coordinates:
     sudo git pull
     sudo -u birdwatch venv/bin/pip install -r requirements.txt
     sudo systemctl restart birdwatch
+
+The nginx HTTPS configuration and self-signed certificate in `/etc/ssl/birdwatch/`
+are not affected by upgrades — re-run `scripts/setup_https.sh` only if you move
+to a new server or the certificate expires (default 10 years).
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/setup_https.sh` | Install nginx reverse proxy with self-signed TLS certificate |
+| `scripts/test_birdnet.py` | Verify BirdNET model loads and inference runs correctly |
