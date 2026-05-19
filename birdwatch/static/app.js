@@ -323,23 +323,41 @@ document.addEventListener('alpine:init', () => {
         }
       } catch(e) {}
 
-      // Wikipedia article sections (Description, Habitat, Diet, Migration, Breeding…)
+      // Wikipedia article sections via Action API (supports CORS via origin=*)
+      // Uses action=query&prop=extracts to get the full HTML, then parses h2 sections
       try {
-        const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/mobile-sections/${query}`);
+        const actionUrl = 'https://en.wikipedia.org/w/api.php?action=query'
+          + '&prop=extracts&format=json&origin=*&exlimit=1'
+          + '&titles=' + query;
+        const r = await fetch(actionUrl);
         if (r.ok) {
           const d = await r.json();
-          const sections = [];
-          for (const s of (d.remaining?.sections || [])) {
-            if (s.toclevel === 1 && s.text) {
-              const text = s.text
-                .replace(/<[^>]+>/g, ' ')
-                .replace(/\s+/g, ' ')
-                .replace(/\[[\d ,]+\]/g, '')
-                .trim();
-              if (text.length > 80) sections.push({ title: s.line, text, expanded: false });
+          const pages = d?.query?.pages || {};
+          const page  = Object.values(pages)[0];
+          if (page?.extract) {
+            // Parse the HTML: split on <h2> tags to get named sections
+            const parser   = new DOMParser();
+            const doc      = parser.parseFromString(page.extract, 'text/html');
+            const sections = [];
+            let current    = null;
+
+            for (const el of doc.body.childNodes) {
+              if (el.nodeName === 'H2') {
+                if (current && current.text.trim().length > 80)
+                  sections.push({ ...current, expanded: false });
+                current = {
+                  title: el.textContent.replace(/\[edit\]/gi, '').trim(),
+                  text: '',
+                };
+              } else if (current && (el.nodeName === 'P' || el.nodeName === 'UL')) {
+                current.text += ' ' + (el.textContent || '').trim();
+              }
             }
+            if (current && current.text.trim().length > 80)
+              sections.push({ ...current, expanded: false });
+
+            this.birdPanel.sections = sections;
           }
-          this.birdPanel.sections = sections;
         }
       } catch(e) {}
 
