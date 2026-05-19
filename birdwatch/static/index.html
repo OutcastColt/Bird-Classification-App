@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BirdWatch</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/logo.png">
   <link rel="stylesheet" href="/style.css">
   <script defer src="/app.js"></script>
   <script defer src="/alpine.min.js"></script>
@@ -11,6 +13,8 @@
 <body x-data="dashboard" x-init="init()">
 
 <header>
+  <img src="/logo.png" alt="BirdWatch logo"
+       style="height:42px;width:42px;object-fit:contain;flex-shrink:0">
   <h1>BirdWatch</h1>
   <nav>
     <button :class="tab==='live'?'active':''"     @click="tab='live'">Live</button>
