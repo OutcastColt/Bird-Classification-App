@@ -9,6 +9,7 @@ document.addEventListener('alpine:init', () => {
     cameraStatuses: {},
     wsConnected: false,
     MAX_LIVE: 50,
+    detectionSummary: { total: 0, today: 0, top_species: [] },
 
     // History
     historyRows: [],
@@ -37,8 +38,10 @@ document.addEventListener('alpine:init', () => {
       await this.loadCameras();
       await this.loadSettings();
       await this.loadAlertRules();
+      await this.loadDetectionSummary();
       this.connectWS();
       setInterval(() => this.loadCameraStatuses(), 10000);
+      setInterval(() => this.loadDetectionSummary(), 30000);
     },
 
     connectWS() {
@@ -60,7 +63,15 @@ document.addEventListener('alpine:init', () => {
         this.liveDetections.unshift(det);
         if (this.liveDetections.length > this.MAX_LIVE)
           this.liveDetections.pop();
+        this.loadDetectionSummary();
       };
+    },
+
+    async loadDetectionSummary() {
+      try {
+        const r = await fetch('/api/detections/summary');
+        this.detectionSummary = await r.json();
+      } catch (e) { /* non-fatal */ }
     },
 
     async loadRecentDetections() {

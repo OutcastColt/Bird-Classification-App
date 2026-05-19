@@ -42,6 +42,31 @@
         </div>
       </div>
       <div class="card">
+        <h2>Detection Summary</h2>
+        <div style="display:flex;gap:2rem;margin-bottom:1rem;flex-wrap:wrap">
+          <div>
+            <div style="font-size:2rem;font-weight:700;color:#68d391" x-text="detectionSummary.total"></div>
+            <div style="font-size:.8rem;color:#a0aec0">Total detections</div>
+          </div>
+          <div>
+            <div style="font-size:2rem;font-weight:700;color:#68d391" x-text="detectionSummary.today"></div>
+            <div style="font-size:.8rem;color:#a0aec0">Today</div>
+          </div>
+        </div>
+        <div x-show="detectionSummary.top_species.length > 0">
+          <div style="font-size:.8rem;color:#a0aec0;margin-bottom:.5rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Top Species</div>
+          <template x-for="(s, i) in detectionSummary.top_species" :key="s.species_common">
+            <div style="display:flex;align-items:center;gap:.6rem;padding:.3rem 0;border-bottom:1px solid #2d3748">
+              <span style="font-size:.75rem;color:#718096;min-width:1.2rem;text-align:right" x-text="i+1"></span>
+              <div style="flex:1;font-size:.9rem" x-text="s.species_common"></div>
+              <span class="conf-badge" style="background:#276749;color:#c6f6d5;border-radius:999px" x-text="s.c + ' seen'"></span>
+            </div>
+          </template>
+        </div>
+        <p x-show="detectionSummary.top_species.length === 0" style="color:#718096;font-size:.85rem">No detections yet.</p>
+      </div>
+
+      <div class="card">
         <h2>Recent Detections</h2>
         <template x-for="det in liveDetections" :key="det.id || (det.timestamp+det.camera_id+det.species_common+det.confidence)">
           <div class="detection-row">
