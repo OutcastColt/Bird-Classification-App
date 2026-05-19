@@ -2,67 +2,70 @@
 """
 BirdNET installation test script.
 
-Downloads a short public-domain bird recording and runs it through
-birdnetlib to confirm the model loads and detections work correctly.
+Generates a synthetic audio file locally (no internet required) and runs it
+through birdnetlib to confirm the model loads and inference executes correctly.
+
+For a real detection test, pass a genuine bird recording with --audio.
 
 Usage:
     source venv/bin/activate
     python scripts/test_birdnet.py
 
+    # Test with a real recording for actual species detection:
+    python scripts/test_birdnet.py --audio /path/to/bird.wav
+
 Optional arguments:
-    --audio <path>   Use a local audio file instead of downloading a sample
+    --audio <path>   Use a local audio file instead of the synthetic tone
     --lat <float>    Latitude for species filtering (default: 38.89)
     --lon <float>    Longitude for species filtering (default: -77.03)
     --conf <float>   Minimum confidence threshold (default: 0.10)
 """
 
 import argparse
+import math
 import os
+import struct
 import sys
 import tempfile
-import urllib.request
+import wave
 from datetime import datetime
 from pathlib import Path
 
-# Candidate URLs tried in order until one succeeds.
-# Wikimedia requires a User-Agent; BirdNET-Analyzer example is a reliable fallback.
-SAMPLE_URLS = [
-    (
-        "https://upload.wikimedia.org/wikipedia/commons/0/0b/Turdus-merula-singing.ogg",
-        "test_blackbird.ogg",
-    ),
-    (
-        "https://github.com/kahst/BirdNET-Analyzer/raw/main/example/soundscape.wav",
-        "test_soundscape.wav",
-    ),
-]
-
-_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (compatible; BirdWatch-test/1.0; "
-        "+https://github.com/OutcastColt/Bird-Classification-App)"
-    )
-}
+SAMPLE_RATE = 48000
+DURATION_S  = 3
 
 
-def download_sample(dest: str) -> None:
-    last_err = None
-    for url, label in SAMPLE_URLS:
-        print(f"Downloading test audio: {label} ...")
-        try:
-            req = urllib.request.Request(url, headers=_HEADERS)
-            with urllib.request.urlopen(req, timeout=30) as resp, open(dest, "wb") as f:
-                f.write(resp.read())
-            size_kb = Path(dest).stat().st_size // 1024
-            print(f"Downloaded {size_kb} KB -> {dest}")
-            return
-        except Exception as exc:
-            print(f"  Failed ({exc}), trying next source...")
-            last_err = exc
-    raise RuntimeError(f"All download sources failed. Last error: {last_err}")
+def generate_test_wav(dest: str) -> None:
+    """Write a 3-second frequency sweep (2 kHz -> 8 kHz) at 48 kHz mono 16-bit.
+
+    A rising chirp resembles a bird call and gives BirdNET something non-trivial
+    to process, exercising the full inference path.
+    """
+    n_samples = SAMPLE_RATE * DURATION_S
+    freq_start = 2000.0
+    freq_end   = 8000.0
+    amplitude  = 16000  # well below int16 max to avoid clipping
+
+    samples = []
+    for i in range(n_samples):
+        t = i / SAMPLE_RATE
+        # Linear frequency sweep
+        freq = freq_start + (freq_end - freq_start) * (t / DURATION_S)
+        value = int(amplitude * math.sin(2 * math.pi * freq * t))
+        samples.append(value)
+
+    with wave.open(dest, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)   # 16-bit
+        wf.setframerate(SAMPLE_RATE)
+        wf.writeframes(struct.pack(f"<{n_samples}h", *samples))
+
+    size_kb = Path(dest).stat().st_size // 1024
+    print(f"Generated synthetic test audio ({DURATION_S}s chirp, {size_kb} KB) -> {dest}")
 
 
-def run_test(audio_path: str, lat: float, lon: float, min_conf: float) -> bool:
+def run_test(audio_path: str, lat: float, lon: float, min_conf: float,
+             is_synthetic: bool) -> bool:
     print("\n--- Step 1: Load BirdNET model ---")
     try:
         from birdnetlib.analyzer import Analyzer
@@ -71,16 +74,18 @@ def run_test(audio_path: str, lat: float, lon: float, min_conf: float) -> bool:
     except Exception as exc:
         print(f"FAILED to load model: {exc}")
         print("\nTroubleshooting:")
-        print("  1. Ensure you are in the venv: source venv/bin/activate")
-        print("  2. Install dependencies:       pip install -r requirements.txt")
-        print("  3. Check internet access (model downloads on first run)")
+        print("  1. Ensure you are in the venv:  source venv/bin/activate")
+        print("  2. Install dependencies:         pip install -r requirements.txt")
+        print("  3. First run downloads the model — requires internet access (~100 MB)")
         return False
 
-    print("\n--- Step 2: Analyse audio ---")
+    print("\n--- Step 2: Run inference ---")
     print(f"  File      : {audio_path}")
     print(f"  Location  : {lat}, {lon}")
     print(f"  Min conf  : {min_conf:.0%}")
     print(f"  Date      : {datetime.now().strftime('%Y-%m-%d')}")
+    if is_synthetic:
+        print("  Audio     : synthetic chirp (no real bird — testing pipeline only)")
 
     try:
         from birdnetlib import Recording
@@ -94,13 +99,22 @@ def run_test(audio_path: str, lat: float, lon: float, min_conf: float) -> bool:
         )
         recording.analyze()
     except Exception as exc:
-        print(f"FAILED to analyse audio: {exc}")
+        print(f"FAILED during inference: {exc}")
         return False
 
     print("\n--- Step 3: Results ---")
+    if is_synthetic:
+        print("Inference completed successfully.")
+        print("No real detections expected from a synthetic tone — BirdNET is working.")
+        if recording.detections:
+            print(f"(Incidental matches: {', '.join(d['common_name'] for d in recording.detections)})")
+        print("\nTo test with real audio:  python scripts/test_birdnet.py --audio /path/to/bird.wav")
+        return True
+
     if not recording.detections:
         print("No detections above threshold.")
-        print("Try a lower --conf value or a different audio file.")
+        print("Tips: use --conf 0.05, check lat/lon match the recording location,")
+        print("      or try a different audio file.")
         return True
 
     print(f"{'Species':<30} {'Scientific name':<35} {'Confidence':>10}")
@@ -108,41 +122,31 @@ def run_test(audio_path: str, lat: float, lon: float, min_conf: float) -> bool:
     for d in sorted(recording.detections, key=lambda x: x["confidence"], reverse=True):
         print(f"{d['common_name']:<30} {d['scientific_name']:<35} {d['confidence']:>9.0%}")
 
-    print(f"\n{len(recording.detections)} detection(s) found — BirdNET is working correctly.")
+    print(f"\n{len(recording.detections)} detection(s) — BirdNET is working correctly.")
     return True
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Test BirdNET installation")
-    parser.add_argument("--audio", help="Path to a local audio file")
-    parser.add_argument("--lat",  type=float, default=38.89, help="Latitude")
-    parser.add_argument("--lon",  type=float, default=-77.03, help="Longitude")
-    parser.add_argument("--conf", type=float, default=0.10,  help="Min confidence (0–1)")
+    parser.add_argument("--audio", help="Path to a local audio file for real detection test")
+    parser.add_argument("--lat",  type=float, default=38.89, help="Latitude (default: 38.89)")
+    parser.add_argument("--lon",  type=float, default=-77.03, help="Longitude (default: -77.03)")
+    parser.add_argument("--conf", type=float, default=0.10,  help="Min confidence 0-1 (default: 0.10)")
     args = parser.parse_args()
 
     if args.audio:
-        audio_path = args.audio
-        if not Path(audio_path).exists():
-            print(f"File not found: {audio_path}")
+        if not Path(args.audio).exists():
+            print(f"File not found: {args.audio}")
             sys.exit(1)
-        tmp = None
+        success = run_test(args.audio, args.lat, args.lon, args.conf, is_synthetic=False)
     else:
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         tmp.close()
-        audio_path = tmp.name
         try:
-            download_sample(audio_path)
-        except Exception as exc:
-            print(f"Download failed: {exc}")
-            print(f"Provide a local file with --audio <path>")
-            os.unlink(audio_path)
-            sys.exit(1)
-
-    try:
-        success = run_test(audio_path, args.lat, args.lon, args.conf)
-    finally:
-        if tmp:
-            os.unlink(audio_path)
+            generate_test_wav(tmp.name)
+            success = run_test(tmp.name, args.lat, args.lon, args.conf, is_synthetic=True)
+        finally:
+            os.unlink(tmp.name)
 
     sys.exit(0 if success else 1)
 
