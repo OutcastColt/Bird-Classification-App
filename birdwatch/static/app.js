@@ -25,7 +25,8 @@ document.addEventListener('alpine:init', () => {
     historyRows: [],
     histPage: 0,
     histLimit: 25,
-    histFilter: { camera_id: '', species: '', date_from: '', date_to: '' },
+    histFilter: { camera_id: '', species: '', conservation: '', date_from: '', date_to: '' },
+    detectedSpecies: [],  // [{ species_common, species_sci, c }]
 
     // Cameras
     cameras: [],
@@ -166,6 +167,26 @@ document.addEventListener('alpine:init', () => {
       this.historyRows = await r.json();
       for (const d of this.historyRows)
         this.fetchBirdImage(d.species_common, d.species_sci);
+    },
+
+    async loadDetectedSpecies() {
+      try {
+        const r = await fetch('/api/detections/species');
+        this.detectedSpecies = await r.json();
+        // Pre-fetch conservation status for all detected species
+        for (const s of this.detectedSpecies)
+          this.fetchConservation(s.species_common, s.species_sci);
+      } catch(e) { /* non-fatal */ }
+    },
+
+    // Species dropdown filtered by selected conservation code
+    filteredSpecies() {
+      if (!this.histFilter.conservation) return this.detectedSpecies;
+      return this.detectedSpecies.filter(s => {
+        const key = s.species_sci || s.species_common;
+        const c = this.speciesConservation[key];
+        return c && c.code === this.histFilter.conservation;
+      });
     },
 
     histPrev() { if (this.histPage > 0) { this.histPage--; this.loadHistory(); } },

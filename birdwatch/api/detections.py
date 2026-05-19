@@ -28,3 +28,14 @@ def get_detections(
 @router.get("/detections/summary")
 def get_summary():
     return dbmod.get_detection_summary(db_path=dbmod.DB_PATH)
+
+
+@router.get("/detections/species")
+def get_detected_species():
+    """All distinct species seen, ordered by detection count descending."""
+    with dbmod.get_connection(dbmod.DB_PATH) as conn:
+        rows = conn.execute(
+            "SELECT species_common, species_sci, COUNT(*) c "
+            "FROM detections GROUP BY species_common ORDER BY c DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]

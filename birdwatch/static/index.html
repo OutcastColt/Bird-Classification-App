@@ -14,7 +14,7 @@
   <h1>BirdWatch</h1>
   <nav>
     <button :class="tab==='live'?'active':''"     @click="tab='live'">Live</button>
-    <button :class="tab==='history'?'active':''"  @click="tab='history'; loadHistory()">History</button>
+    <button :class="tab==='history'?'active':''"  @click="tab='history'; loadCameras(); loadDetectedSpecies(); loadHistory()">History</button>
     <button :class="tab==='cameras'?'active':''"  @click="tab='cameras'">Cameras</button>
     <button :class="tab==='settings'?'active':''" @click="tab='settings'">Settings</button>
   </nav>
@@ -107,11 +107,49 @@
       <div class="card">
         <h2>Filter</h2>
         <div class="form-row">
-          <label>Camera ID<input x-model="histFilter.camera_id" placeholder="all cameras"></label>
-          <label>Species<input x-model="histFilter.species" placeholder="e.g. Robin"></label>
+
+          <!-- Camera dropdown — updates automatically when cameras change -->
+          <label>Camera
+            <select x-model="histFilter.camera_id">
+              <option value="">All cameras</option>
+              <template x-for="cam in cameras" :key="cam.id">
+                <option :value="cam.id" x-text="cam.name || cam.id"></option>
+              </template>
+            </select>
+          </label>
+
+          <!-- Conservation status dropdown — narrows species list -->
+          <label>Conservation Status
+            <select x-model="histFilter.conservation"
+                    @change="histFilter.species = ''">
+              <option value="">Any status</option>
+              <option value="LC">LC — Least Concern</option>
+              <option value="NT">NT — Near Threatened</option>
+              <option value="VU">VU — Vulnerable</option>
+              <option value="EN">EN — Endangered</option>
+              <option value="CR">CR — Critically Endangered</option>
+              <option value="EW">EW — Extinct in the Wild</option>
+              <option value="EX">EX — Extinct</option>
+              <option value="DD">DD — Data Deficient</option>
+            </select>
+          </label>
+
+          <!-- Species dropdown — filtered by conservation status selection -->
+          <label>Species
+            <select x-model="histFilter.species">
+              <option value="">All species</option>
+              <template x-for="s in filteredSpecies()" :key="s.species_common">
+                <option :value="s.species_common" x-text="s.species_common + ' (' + s.c + ')'"></option>
+              </template>
+            </select>
+          </label>
+
           <label>From<input type="date" x-model="histFilter.date_from"></label>
           <label>To<input type="date" x-model="histFilter.date_to"></label>
+
           <button class="btn" style="align-self:flex-end" @click="histPage=0;loadHistory()">Search</button>
+          <button class="btn" style="align-self:flex-end;background:#4a5568"
+                  @click="histFilter={camera_id:'',species:'',conservation:'',date_from:'',date_to:''};histPage=0;loadHistory()">Clear</button>
         </div>
       </div>
       <div class="card">
