@@ -164,6 +164,20 @@ def create_app() -> FastAPI:
             dbmod.upsert_camera(cam.id, cam.name, cam.stream_url, cam.enabled,
                                 db_path=dbmod.DB_PATH)
 
+        # Replace cfg.cameras with the full database list so ProcessManager spawns
+        # workers for ALL cameras (including any added/edited via the dashboard),
+        # not just those in config.yaml.
+        from birdwatch.config import CameraConfig as _CameraConfig
+        cfg.cameras = [
+            _CameraConfig(id=c["id"], name=c["name"],
+                          stream_url=c["stream_url"], enabled=bool(c["enabled"]))
+            for c in dbmod.list_cameras(db_path=dbmod.DB_PATH)
+        ]
+        logging.getLogger("startup").info(
+            "Starting workers for %d camera(s) from database",
+            sum(1 for c in cfg.cameras if c.enabled),
+        )
+
         ws_manager = ConnectionManager()
         alert_mgr = AlertManager()
         infer_queue: multiprocessing.Queue = multiprocessing.Queue(
