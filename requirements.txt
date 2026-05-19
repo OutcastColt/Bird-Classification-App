@@ -5,6 +5,7 @@ fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
 birdnetlib>=0.9.0
 librosa>=0.10.0
+tensorflow>=2.16.0   # required by birdnetlib for model inference (~600 MB install)
 pydantic>=2.7.0
 pyyaml>=6.0.1
 aiofiles>=23.2.1
