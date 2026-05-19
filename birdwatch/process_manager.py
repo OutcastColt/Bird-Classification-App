@@ -162,9 +162,7 @@ class ProcessManager:
         if entry is None:
             return
         entry.stop_event.set()
-        entry.process.join(timeout=5)
-        if entry.process.is_alive():
-            entry.process.terminate()
+        entry.process.terminate()   # non-blocking — heartbeat cleans up any zombie
         self.logger.info("Stopped camera worker: %s", camera_id)
 
     def get_camera_statuses(self) -> dict[str, str]:

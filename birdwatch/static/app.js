@@ -106,6 +106,7 @@ document.addEventListener('alpine:init', () => {
         this.editingCam = false;
         this.camSaved = true;
         await this.loadCameras();
+        await this.loadCameraStatuses();
         setTimeout(() => { this.camSaved = false; }, 3000);
       }
     },
