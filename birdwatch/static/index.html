@@ -28,13 +28,13 @@
        :title="weather.desc + ' — ' + weather.wind + ' mph wind'">
     <span style="font-size:1.05rem;line-height:1" x-text="weather.symbol"></span>
     <span style="font-size:.9rem;font-weight:600;color:#e2e8f0" x-text="weather.temp + '°F'"></span>
-    <span style="font-size:.78rem;color:#a0aec0" x-text="weather.desc"></span>
-    <span style="font-size:.75rem;color:#718096" x-text="weather.wind + ' mph'"></span>
+    <span class="weather-desc" style="font-size:.78rem;color:#a0aec0" x-text="weather.desc"></span>
+    <span class="weather-wind" style="font-size:.75rem;color:#718096" x-text="weather.wind + ' mph'"></span>
   </div>
 
   <span style="font-size:.75rem;color:#718096">
-    WS: <span :style="wsConnected?'color:#68d391':'color:#fc8181'"
-              x-text="wsConnected?'connected':'reconnecting'"></span>
+    <span class="ws-label">WS: </span><span :style="wsConnected?'color:#68d391':'color:#fc8181'"
+          x-text="wsConnected?'connected':'reconnecting'"></span>
   </span>
 </header>
 
@@ -167,6 +167,7 @@
         </div>
       </div>
       <div class="card">
+        <div class="table-responsive">
         <table>
           <thead>
             <tr>
@@ -199,6 +200,7 @@
             </tr>
           </tbody>
         </table>
+        </div><!-- /table-responsive -->
         <div class="pagination">
           <button @click="histPrev()" :disabled="histPage===0">Prev</button>
           <span style="padding:.3rem .5rem;font-size:.85rem" x-text="'Page '+(histPage+1)"></span>
@@ -218,7 +220,7 @@
                    :readonly="editingCam" :style="editingCam ? 'opacity:.5;cursor:not-allowed' : ''">
           </label>
           <label>Display Name<input x-model="newCam.name" placeholder="Front Yard"></label>
-          <label>Stream URL<input x-model="newCam.stream_url" placeholder="rtsp:// or rtsps://" style="min-width:300px"></label>
+          <label style="flex:2;min-width:240px">Stream URL<input x-model="newCam.stream_url" placeholder="rtsp:// or rtsps://"></label>
           <label style="justify-content:flex-end">
             Enabled
             <input type="checkbox" x-model="newCam.enabled" style="min-width:auto;width:auto">
@@ -231,14 +233,15 @@
       </div>
       <div class="card">
         <h2>Configured Cameras</h2>
+        <div class="table-responsive">
         <table>
-          <thead><tr><th>ID</th><th>Name</th><th>URL</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>Name</th><th class="col-url">URL</th><th>Status</th><th></th></tr></thead>
           <tbody>
             <template x-for="cam in cameras" :key="cam.id">
               <tr>
                 <td x-text="cam.id"></td>
                 <td x-text="cam.name"></td>
-                <td style="font-size:.8rem;color:#a0aec0" x-text="cam.stream_url"></td>
+                <td class="col-url" style="font-size:.8rem;color:#a0aec0" x-text="cam.stream_url"></td>
                 <td><span class="cam-badge" :class="cameraStatusClass(cam.status)" x-text="cam.status"></span></td>
                 <td style="display:flex;gap:.4rem;padding:.45rem .75rem">
                   <button class="btn" style="background:#2b6cb0" @click="editCamera(cam)">Edit</button>
@@ -248,6 +251,7 @@
             </template>
           </tbody>
         </table>
+        </div><!-- /table-responsive -->
       </div>
   </div>
 
@@ -282,10 +286,11 @@
               <option value="pushover">Pushover</option>
             </select>
           </label>
-          <label>Config JSON<input x-model="newRule.config" placeholder='{"url":"https://..."}' style="min-width:300px"></label>
+          <label style="flex:2;min-width:240px">Config JSON<input x-model="newRule.config" placeholder='{"url":"https://..."}'></label>
           <label>Cooldown (mins)<input type="number" min="1" x-model.number="newRule.cooldown_mins"></label>
           <button class="btn" style="align-self:flex-end" @click="saveRule()">Add Rule</button>
         </div>
+        <div class="table-responsive">
         <table>
           <thead><tr><th>Species</th><th>Confidence</th><th>Method</th><th>Cooldown</th><th>Status</th><th></th></tr></thead>
           <tbody>
@@ -301,6 +306,7 @@
             </template>
           </tbody>
         </table>
+        </div><!-- /table-responsive -->
       </div>
   </div>
 

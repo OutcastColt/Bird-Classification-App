@@ -157,3 +157,59 @@ tr:hover td { background: #1e2535; }
 .pagination button.active { background: #276749; color: #fff; }
 
 .alert-success { background: #1c4532; border: 1px solid #276749; border-radius: 6px; padding: .5rem 1rem; font-size: .85rem; margin-bottom: .75rem; }
+
+/* ── Responsive wrapper for overflowing tables ───────────────────────────── */
+.table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* ── Tablet (≤ 900px) ────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  header { gap: 1rem; padding: .75rem 1rem; }
+  header h1 { font-size: 1.05rem; }
+  nav button { padding: .4rem .7rem; font-size: .84rem; }
+  main { padding: 1rem; }
+  .weather-desc { display: none; }   /* hide condition text, keep symbol + temp */
+}
+
+/* ── Mobile (≤ 600px) ────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  /* Header: logo + title + right-side info on row 1, nav wraps to row 2 */
+  header {
+    flex-wrap: wrap;
+    gap: .5rem;
+    padding: .6rem .75rem;
+  }
+  header img { height: 32px; width: 32px; }
+  header h1  { font-size: .9rem; }
+
+  nav {
+    order: 10;           /* push below all header content */
+    width: 100%;
+    display: flex;
+    justify-content: space-around;
+    border-top: 1px solid #2d3748;
+    padding-top: .45rem;
+    gap: 0;
+  }
+  nav button { padding: .38rem .45rem; font-size: .76rem; }
+
+  .weather-wind { display: none; }  /* hide wind speed — symbol + temp remain */
+  .ws-label { display: none; }      /* hide "WS:" text — colored status dot stays */
+
+  main  { padding: .75rem .5rem; }
+  .card { padding: .75rem; }
+
+  /* Full-width form fields — overrides all min-width including inline styles */
+  .form-row { gap: .5rem; }
+  .form-row label { width: 100%; min-width: 0; }
+  input, select { min-width: 0 !important; width: 100%; }
+
+  /* Detection rows: wrap tightly on small screens */
+  .detection-row { flex-wrap: wrap; gap: .3rem; }
+  .time-label { min-width: auto; font-size: .7rem; }
+
+  /* Camera URL column: too long for mobile, hidden — Edit button reveals it */
+  .col-url { display: none; }
+
+  /* Bird info panel: full width on mobile */
+  .bird-panel { width: 100%; max-width: 100%; }
+}
