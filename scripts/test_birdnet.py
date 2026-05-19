@@ -24,18 +24,42 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-SAMPLE_URL = (
-    "https://upload.wikimedia.org/wikipedia/commons/0/0b/"
-    "Turdus-merula-singing.ogg"
-)
-SAMPLE_FILENAME = "test_blackbird.ogg"
+# Candidate URLs tried in order until one succeeds.
+# Wikimedia requires a User-Agent; BirdNET-Analyzer example is a reliable fallback.
+SAMPLE_URLS = [
+    (
+        "https://upload.wikimedia.org/wikipedia/commons/0/0b/Turdus-merula-singing.ogg",
+        "test_blackbird.ogg",
+    ),
+    (
+        "https://github.com/kahst/BirdNET-Analyzer/raw/main/example/soundscape.wav",
+        "test_soundscape.wav",
+    ),
+]
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (compatible; BirdWatch-test/1.0; "
+        "+https://github.com/OutcastColt/Bird-Classification-App)"
+    )
+}
 
 
 def download_sample(dest: str) -> None:
-    print(f"Downloading test audio from Wikimedia Commons...")
-    urllib.request.urlretrieve(SAMPLE_URL, dest)
-    size_kb = Path(dest).stat().st_size // 1024
-    print(f"Downloaded {size_kb} KB -> {dest}")
+    last_err = None
+    for url, label in SAMPLE_URLS:
+        print(f"Downloading test audio: {label} ...")
+        try:
+            req = urllib.request.Request(url, headers=_HEADERS)
+            with urllib.request.urlopen(req, timeout=30) as resp, open(dest, "wb") as f:
+                f.write(resp.read())
+            size_kb = Path(dest).stat().st_size // 1024
+            print(f"Downloaded {size_kb} KB -> {dest}")
+            return
+        except Exception as exc:
+            print(f"  Failed ({exc}), trying next source...")
+            last_err = exc
+    raise RuntimeError(f"All download sources failed. Last error: {last_err}")
 
 
 def run_test(audio_path: str, lat: float, lon: float, min_conf: float) -> bool:
@@ -103,7 +127,7 @@ def main() -> None:
             sys.exit(1)
         tmp = None
     else:
-        tmp = tempfile.NamedTemporaryFile(suffix=".ogg", delete=False)
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         tmp.close()
         audio_path = tmp.name
         try:
