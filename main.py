@@ -85,6 +85,15 @@ async def _result_consumer(
         except Exception as exc:
             logger.error("DB write failed: %s", exc)
 
+        # Log detection to journald / birdwatch.log
+        logger.info(
+            "DETECTION  %-30s  %-25s  conf=%.0f%%  camera=%s",
+            raw["species_common"],
+            raw["species_sci"],
+            raw["confidence"] * 100,
+            raw["camera_id"],
+        )
+
         # Check alert rules
         try:
             rules = dbmod.list_alert_rules(db_path=dbmod.DB_PATH)
