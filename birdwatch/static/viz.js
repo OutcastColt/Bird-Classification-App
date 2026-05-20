@@ -1139,7 +1139,7 @@ class TaxonomyCircleChart {
     this.onOpenPanel = options.onOpenPanel || (() => {});
 
     this._data        = null;    // hierarchy JSON from server
-    this._zoomStack   = [];      // stack of zoomed-into nodes
+    this._zoomPath    = [];      // names of zoomed-into nodes (stable across re-renders)
     this._colorFamily = d3.scaleOrdinal(d3.schemeTableau10);
 
     this._margin = 4;
@@ -1187,89 +1187,70 @@ class TaxonomyCircleChart {
 
   /* ── Render ─────────────────────────────────────────────────────────── */
   update(data) {
-    this._data = data;
-    this._zoomStack = [];
+    this._data     = data;
+    this._zoomPath = [];
     this._render(data);
     this._renderBreadcrumb();
   }
 
   _render(data) {
     if (!data || !data.children) return;
-    const S   = this._size();
-    const m   = this._margin;
+    const S = this._size();
+    const m = this._margin;
 
+    // Build fresh hierarchy + pack on every render
     const root = d3.hierarchy(data)
       .sum(d => d.value || 0)
       .sort((a, b) => b.value - a.value);
-
     d3.pack().size([S - m * 2, S - m * 2]).padding(3)(root);
 
     // Assign family colors (depth-2 nodes)
-    const families = root.descendants().filter(d => d.depth === 2);
-    families.forEach(f => this._colorFamily(f.data.name));
+    root.descendants().filter(d => d.depth === 2)
+      .forEach(f => this._colorFamily(f.data.name));
 
-    const self = this;
+    // Walk _zoomPath to find current view node in the NEW hierarchy
+    let viewNode = root;
+    for (const name of this._zoomPath) {
+      const child = viewNode.children?.find(c => c.data.name === name);
+      if (child) { viewNode = child; }
+      else       { this._zoomPath = []; viewNode = root; break; }
+    }
 
-    // Determine view node (top of zoom stack or root)
-    const viewNode = this._zoomStack.length ? this._zoomStack[this._zoomStack.length - 1] : root;
-    const visibles = viewNode.descendants();
-    const visSet   = new Set(visibles);
-
-    const nodes = this._g.selectAll('g.tc-node').data(root.descendants(), d => d.data.name + d.depth);
-
-    const enter = nodes.enter().append('g').attr('class', 'tc-node');
-    enter.append('circle');
-    enter.append('text').attr('class', 'tc-label');
-
-    const merged = enter.merge(nodes);
-
-    // Hide nodes not in current view
-    merged.style('display', d => visSet.has(d) ? '' : 'none');
-
-    // Compute zoom transform to center on viewNode
-    const k  = (S - m * 2) / 2 / viewNode.r;
+    // Compute zoom transform: centre on viewNode, scale to fill canvas
+    const k  = viewNode === root ? 1 : (S - m * 2) / 2 / viewNode.r;
     const tx = S / 2 - viewNode.x * k;
     const ty = S / 2 - viewNode.y * k;
 
-    merged.select('circle')
-      .transition().duration(400)
+    // ── Clean-slate render — prevents duplicate labels and offset artefacts ──
+    this._g.selectAll('*').remove();
+
+    const self = this;
+    const visible = root.descendants().filter(d =>
+      d !== root &&
+      d.depth >  viewNode.depth &&
+      d.depth <= viewNode.depth + 3 &&
+      this._isDescendantOf(d, viewNode)
+    );
+
+    const groups = this._g.selectAll('g.tc-node')
+      .data(visible)
+      .enter().append('g').attr('class', 'tc-node');
+
+    // Circles
+    groups.append('circle')
       .attr('cx', d => d.x * k + tx)
       .attr('cy', d => d.y * k + ty)
-      .attr('r',  d => d.r  * k)
-      .attr('fill',    d => this._fillColor(d))
-      .attr('stroke',  d => d.depth > 0 ? 'rgba(255,255,255,.12)' : 'none')
-      .attr('cursor',  d => d.children ? 'zoom-in' : 'pointer')
-      .attr('opacity', d => d === viewNode ? 0 : (d.depth <= viewNode.depth + 2 ? 1 : 0));
-
-    // Labels on circles large enough to read
-    merged.select('text')
-      .transition().duration(400)
-      .attr('x', d => d.x * k + tx)
-      .attr('y', d => d.y * k + ty)
-      .attr('text-anchor', 'middle')
-      .attr('dominant-baseline', 'middle')
-      .attr('fill', '#e2e8f0')
-      .attr('font-size', d => Math.min(12, Math.max(7, d.r * k * 0.28)) + 'px')
-      .attr('pointer-events', 'none')
-      .attr('opacity', d => (d.r * k > 18 && d.depth > viewNode.depth && visSet.has(d)) ? 0.9 : 0)
-      .text(d => d.children ? d.data.name : d.data.name.split(' ').slice(0, 2).join(' '));
-
-    // Events (remove then re-add to avoid stale closures)
-    merged.select('circle')
-      .on('click',     null)
-      .on('mouseover', null)
-      .on('mouseout',  null);
-
-    merged.select('circle')
+      .attr('r',  d => Math.max(0, d.r * k))
+      .attr('fill',   d => this._fillColor(d))
+      .attr('stroke', 'rgba(255,255,255,.12)')
+      .attr('cursor', d => d.children ? 'zoom-in' : 'pointer')
       .on('click', function(event, d) {
         event.stopPropagation();
-        if (d === viewNode) return;
         if (d.children) {
-          self._zoomStack.push(d);
+          self._zoomPath.push(d.data.name);
           self._render(self._data);
           self._renderBreadcrumb();
         } else {
-          // Leaf (species) — open cross-chart
           self.onViewChart('timeline', d.data.name);
           self.onOpenPanel(d.data.name, d.data.species_sci);
         }
@@ -1277,7 +1258,26 @@ class TaxonomyCircleChart {
       .on('mouseover', function(event, d) { self._showTip(event, d); })
       .on('mouseout',  () => self._tip.style('display', 'none'));
 
-    nodes.exit().remove();
+    // Labels — only on circles wide enough to read, appended once per node
+    groups.filter(d => d.r * k > 14)
+      .append('text')
+      .attr('x', d => d.x * k + tx)
+      .attr('y', d => d.y * k + ty)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'middle')
+      .attr('fill', '#e2e8f0')
+      .attr('font-size', d => Math.min(12, Math.max(7, d.r * k * 0.28)) + 'px')
+      .attr('pointer-events', 'none')
+      .text(d => {
+        const n = d.children ? d.data.name : d.data.name.split(' ').slice(0, 2).join(' ');
+        return n.length > 18 ? n.slice(0, 16) + '…' : n;
+      });
+  }
+
+  _isDescendantOf(node, ancestor) {
+    let n = node;
+    while (n) { if (n === ancestor) return true; n = n.parent; }
+    return false;
   }
 
   _fillColor(d) {
@@ -1318,27 +1318,29 @@ class TaxonomyCircleChart {
 
   /* ── Zoom helpers ───────────────────────────────────────────────────── */
   _zoomOut() {
-    if (this._zoomStack.length > 0) {
-      this._zoomStack.pop();
+    if (this._zoomPath.length > 0) {
+      this._zoomPath.pop();
       this._render(this._data);
       this._renderBreadcrumb();
     }
   }
 
   _zoomRoot() {
-    this._zoomStack = [];
+    this._zoomPath = [];
     this._render(this._data);
     this._renderBreadcrumb();
   }
 
   _renderBreadcrumb() {
     this._breadcrumb.selectAll('.tc-crumb:not(.tc-crumb-root)').remove();
-    for (const node of this._zoomStack) {
+    this._breadcrumb.selectAll('.tc-crumb-sep').remove();
+    for (let i = 0; i < this._zoomPath.length; i++) {
+      const name = this._zoomPath[i];
+      const idx  = i;
       this._breadcrumb.append('span').attr('class', 'tc-crumb-sep').text(' › ');
-      const idx = this._zoomStack.indexOf(node);
-      this._breadcrumb.append('span').attr('class', 'tc-crumb').text(node.data.name)
+      this._breadcrumb.append('span').attr('class', 'tc-crumb').text(name)
         .on('click', () => {
-          this._zoomStack.splice(idx + 1);
+          this._zoomPath.splice(idx + 1);
           this._render(this._data);
           this._renderBreadcrumb();
         });
