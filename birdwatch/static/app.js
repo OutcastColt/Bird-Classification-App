@@ -426,10 +426,19 @@ document.addEventListener('alpine:init', () => {
     async loadVizData() {
       this.vizLoading = true;
       try {
-        const dateFrom = new Date(Date.now() - this.vizHours * 3600000).toISOString();
-        const p = new URLSearchParams({ limit: 2000, date_from: dateFrom });
-        if (this.vizCameraId) p.set('camera_id', this.vizCameraId);
-        const r = await fetch(`/api/detections?${p}`);
+        let url;
+        if (this.vizChartType === 'taxonomy') {
+          // Taxonomy chart needs a pre-aggregated hierarchy from its own endpoint
+          const p = new URLSearchParams({ hours: this.vizHours });
+          if (this.vizCameraId) p.set('camera_id', this.vizCameraId);
+          url = `/api/detections/taxonomy?${p}`;
+        } else {
+          const dateFrom = new Date(Date.now() - this.vizHours * 3600000).toISOString();
+          const p = new URLSearchParams({ limit: 2000, date_from: dateFrom });
+          if (this.vizCameraId) p.set('camera_id', this.vizCameraId);
+          url = `/api/detections?${p}`;
+        }
+        const r = await fetch(url);
         BirdWatchViz.update(await r.json());
       } catch(e) { /* non-fatal */ }
       this.vizLoading = false;

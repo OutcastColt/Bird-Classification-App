@@ -158,6 +158,28 @@ tr:hover td { background: #1e2535; }
 
 .alert-success { background: #1c4532; border: 1px solid #276749; border-radius: 6px; padding: .5rem 1rem; font-size: .85rem; margin-bottom: .75rem; }
 
+/* ── Taxonomy circle-packing chart ──────────────────────────────────────── */
+
+.tc-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .2rem;
+  padding: .3rem .25rem .5rem;
+  font-size: .82rem;
+  color: #a0aec0;
+  min-height: 1.8rem;
+}
+.tc-crumb {
+  color: #68d391;
+  cursor: pointer;
+  border-bottom: 1px dashed #276749;
+}
+.tc-crumb:hover { color: #9ae6b4; }
+.tc-crumb-root  { color: #a0aec0; border-bottom: none; cursor: pointer; }
+.tc-crumb-root:hover { color: #e2e8f0; }
+.tc-crumb-sep   { color: #4a5568; }
+
 /* ── Rare species alerts ─────────────────────────────────────────────────── */
 
 /* Badge on sub-nav button */

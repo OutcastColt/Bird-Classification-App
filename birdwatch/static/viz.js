@@ -1126,8 +1126,237 @@ class RareAlertsChart {
   destroy() { d3.select(this.el).selectAll('*').remove(); }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Taxonomy Circle-Packing Chart — interactive D3 pack layout
+   Order → Family → Genus → Species, sized by detection count
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+class TaxonomyCircleChart {
+
+  constructor(container, options = {}) {
+    this.el          = container;
+    this.onViewChart = options.onViewChart || (() => {});
+    this.onOpenPanel = options.onOpenPanel || (() => {});
+
+    this._data        = null;    // hierarchy JSON from server
+    this._zoomStack   = [];      // stack of zoomed-into nodes
+    this._colorFamily = d3.scaleOrdinal(d3.schemeTableau10);
+
+    this._margin = 4;
+    this._init();
+  }
+
+  /* ── Setup ──────────────────────────────────────────────────────────── */
+  _init() {
+    d3.select(this.el).selectAll('*').remove();
+
+    // Breadcrumb navigation
+    this._breadcrumb = d3.select(this.el).append('div').attr('class', 'tc-breadcrumb');
+    this._breadcrumb.append('span').attr('class', 'tc-crumb tc-crumb-root')
+      .text('All Birds').on('click', () => this._zoomRoot());
+
+    // SVG
+    const W = this._size();
+    this._svg = d3.select(this.el).append('svg')
+      .attr('width',  W).attr('height', W)
+      .style('display', 'block').style('margin', '0 auto');
+
+    this._g = this._svg.append('g');
+
+    // Tooltip
+    this._tip = d3.select(this.el).append('div')
+      .attr('class', 'viz-tip').style('display', 'none');
+
+    // Click on background zooms out
+    this._svg.on('click', () => this._zoomOut());
+
+    this._ro = new ResizeObserver(() => this._resize());
+    this._ro.observe(this.el);
+  }
+
+  _size() {
+    const w = this.el.getBoundingClientRect().width || 700;
+    return Math.min(Math.max(300, w - 8), 720);
+  }
+
+  _resize() {
+    const S = this._size();
+    this._svg.attr('width', S).attr('height', S);
+    if (this._data) this._render(this._data);
+  }
+
+  /* ── Render ─────────────────────────────────────────────────────────── */
+  update(data) {
+    this._data = data;
+    this._zoomStack = [];
+    this._render(data);
+    this._renderBreadcrumb();
+  }
+
+  _render(data) {
+    if (!data || !data.children) return;
+    const S   = this._size();
+    const m   = this._margin;
+
+    const root = d3.hierarchy(data)
+      .sum(d => d.value || 0)
+      .sort((a, b) => b.value - a.value);
+
+    d3.pack().size([S - m * 2, S - m * 2]).padding(3)(root);
+
+    // Assign family colors (depth-2 nodes)
+    const families = root.descendants().filter(d => d.depth === 2);
+    families.forEach(f => this._colorFamily(f.data.name));
+
+    const self = this;
+
+    // Determine view node (top of zoom stack or root)
+    const viewNode = this._zoomStack.length ? this._zoomStack[this._zoomStack.length - 1] : root;
+    const visibles = viewNode.descendants();
+    const visSet   = new Set(visibles);
+
+    const nodes = this._g.selectAll('g.tc-node').data(root.descendants(), d => d.data.name + d.depth);
+
+    const enter = nodes.enter().append('g').attr('class', 'tc-node');
+    enter.append('circle');
+    enter.append('text').attr('class', 'tc-label');
+
+    const merged = enter.merge(nodes);
+
+    // Hide nodes not in current view
+    merged.style('display', d => visSet.has(d) ? '' : 'none');
+
+    // Compute zoom transform to center on viewNode
+    const k  = (S - m * 2) / 2 / viewNode.r;
+    const tx = S / 2 - viewNode.x * k;
+    const ty = S / 2 - viewNode.y * k;
+
+    merged.select('circle')
+      .transition().duration(400)
+      .attr('cx', d => d.x * k + tx)
+      .attr('cy', d => d.y * k + ty)
+      .attr('r',  d => d.r  * k)
+      .attr('fill',    d => this._fillColor(d))
+      .attr('stroke',  d => d.depth > 0 ? 'rgba(255,255,255,.12)' : 'none')
+      .attr('cursor',  d => d.children ? 'zoom-in' : 'pointer')
+      .attr('opacity', d => d === viewNode ? 0 : (d.depth <= viewNode.depth + 2 ? 1 : 0));
+
+    // Labels on circles large enough to read
+    merged.select('text')
+      .transition().duration(400)
+      .attr('x', d => d.x * k + tx)
+      .attr('y', d => d.y * k + ty)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'middle')
+      .attr('fill', '#e2e8f0')
+      .attr('font-size', d => Math.min(12, Math.max(7, d.r * k * 0.28)) + 'px')
+      .attr('pointer-events', 'none')
+      .attr('opacity', d => (d.r * k > 18 && d.depth > viewNode.depth && visSet.has(d)) ? 0.9 : 0)
+      .text(d => d.children ? d.data.name : d.data.name.split(' ').slice(0, 2).join(' '));
+
+    // Events (remove then re-add to avoid stale closures)
+    merged.select('circle')
+      .on('click',     null)
+      .on('mouseover', null)
+      .on('mouseout',  null);
+
+    merged.select('circle')
+      .on('click', function(event, d) {
+        event.stopPropagation();
+        if (d === viewNode) return;
+        if (d.children) {
+          self._zoomStack.push(d);
+          self._render(self._data);
+          self._renderBreadcrumb();
+        } else {
+          // Leaf (species) — open cross-chart
+          self.onViewChart('timeline', d.data.name);
+          self.onOpenPanel(d.data.name, d.data.species_sci);
+        }
+      })
+      .on('mouseover', function(event, d) { self._showTip(event, d); })
+      .on('mouseout',  () => self._tip.style('display', 'none'));
+
+    nodes.exit().remove();
+  }
+
+  _fillColor(d) {
+    if (d.depth === 0) return 'transparent';
+    // Walk up to the family (depth 2) ancestor for consistent color
+    let node = d;
+    while (node.depth > 2 && node.parent) node = node.parent;
+    const base = this._colorFamily(node.data.name);
+    // Fade inner nodes slightly
+    return d.depth === 2 ? base
+         : d.depth === 3 ? base + 'cc'
+         : base + '88';
+  }
+
+  _showTip(event, d) {
+    const bx = this.el.getBoundingClientRect();
+    const ex = event.clientX - bx.left;
+    const ey = event.clientY - bx.top;
+    const tx = ex > bx.width - 220 ? ex - 215 : ex + 14;
+
+    const count   = d.value || 0;
+    const avgConf = d.data.avg_conf != null ? `${Math.round(d.data.avg_conf * 100)}%` : '—';
+    const hint    = d.children
+      ? `${d.children.length} sub-group(s) · click to zoom`
+      : `Click to view in Timeline &amp; species info`;
+
+    this._tip
+      .style('display', 'block')
+      .style('left', (tx + 4) + 'px')
+      .style('top',  (ey - 8) + 'px')
+      .html(`
+        <div class="viz-tt-name">${d.data.name}</div>
+        <div class="viz-tt-row"><b>Detections</b> ${count}</div>
+        ${d.data.avg_conf != null ? `<div class="viz-tt-row"><b>Avg conf</b> ${avgConf}</div>` : ''}
+        <div class="viz-tt-hint">${hint}</div>
+      `);
+  }
+
+  /* ── Zoom helpers ───────────────────────────────────────────────────── */
+  _zoomOut() {
+    if (this._zoomStack.length > 0) {
+      this._zoomStack.pop();
+      this._render(this._data);
+      this._renderBreadcrumb();
+    }
+  }
+
+  _zoomRoot() {
+    this._zoomStack = [];
+    this._render(this._data);
+    this._renderBreadcrumb();
+  }
+
+  _renderBreadcrumb() {
+    this._breadcrumb.selectAll('.tc-crumb:not(.tc-crumb-root)').remove();
+    for (const node of this._zoomStack) {
+      this._breadcrumb.append('span').attr('class', 'tc-crumb-sep').text(' › ');
+      const idx = this._zoomStack.indexOf(node);
+      this._breadcrumb.append('span').attr('class', 'tc-crumb').text(node.data.name)
+        .on('click', () => {
+          this._zoomStack.splice(idx + 1);
+          this._render(this._data);
+          this._renderBreadcrumb();
+        });
+    }
+  }
+
+  /* ── Public API ─────────────────────────────────────────────────────── */
+  setFilters(f) { /* filters applied by loadVizData before calling update() */ }
+  resize()      { this._resize(); }
+  destroy()     {
+    if (this._ro) this._ro.disconnect();
+    d3.select(this.el).selectAll('*').remove();
+  }
+}
+
 /* ── Register built-in chart types ─────────────────────────────────────── */
 BirdWatchViz.register('timeline',    TimelineChart);
 BirdWatchViz.register('speciesconf', SpeciesConfidenceChart);
 BirdWatchViz.register('spectrogram', SpectrogramChart);
 BirdWatchViz.register('rare',        RareAlertsChart);
+BirdWatchViz.register('taxonomy',    TaxonomyCircleChart);

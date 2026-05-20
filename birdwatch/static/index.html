@@ -332,6 +332,8 @@
               @click="vizChartType='speciesconf'; mountViz()">Species Confidence</button>
       <button :class="vizChartType==='spectrogram' ? 'active' : ''"
               @click="vizChartType='spectrogram'; mountViz()">Spectrogram</button>
+      <button :class="vizChartType==='taxonomy'   ? 'active' : ''"
+              @click="vizChartType='taxonomy';   mountViz()">Taxonomy</button>
       <button :class="vizChartType==='rare' ? 'active' : ''"
               @click="vizChartType='rare'; mountViz()"
               style="position:relative">
@@ -418,6 +420,10 @@
       <p x-show="!vizLoading && vizChartType==='spectrogram' && vizCameraId"
          style="font-size:.8rem;color:#718096;margin-top:.5rem;text-align:center">
         Live FFT waterfall (0–8 kHz) &bull; Detection overlays shown as dashed lines &bull; Hover for frequency &amp; time
+      </p>
+      <p x-show="!vizLoading && vizChartType==='taxonomy'"
+         style="font-size:.8rem;color:#718096;margin-top:.5rem;text-align:center">
+        Circle size = detection count &bull; Color = family &bull; Click to drill down &bull; Click background to zoom out
       </p>
       <p x-show="!vizLoading && vizChartType==='rare'"
          style="font-size:.8rem;color:#718096;margin-top:.5rem;text-align:center">

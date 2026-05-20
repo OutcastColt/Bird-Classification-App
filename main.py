@@ -22,7 +22,8 @@ from birdwatch.api.cameras import router as cam_router
 from birdwatch.api.settings import router as set_router
 from birdwatch.api.alerts import router as alert_router
 from birdwatch.api.clips import router as clip_router
-from birdwatch.api.rare import router as rare_router
+from birdwatch.api.rare      import router as rare_router
+from birdwatch.api.taxonomy  import router as taxonomy_router
 
 
 # ── WebSocket connection manager ────────────────────────────────────────────
@@ -87,6 +88,10 @@ async def _result_consumer(
         except Exception as exc:
             logger.error("DB write failed: %s", exc)
 
+        # Lazily fetch taxonomy from GBIF for new species (fire-and-forget)
+        if raw.get("species_sci") and not dbmod.get_taxonomy(raw["species_sci"], db_path=dbmod.DB_PATH):
+            asyncio.create_task(_fetch_taxonomy(raw["species_sci"]))
+
         # Check rare-species watchlist and flag if matched
         try:
             rare_map = dbmod.get_rare_species_map(db_path=dbmod.DB_PATH)
@@ -141,6 +146,53 @@ async def _clip_cleanup(retention_days: int) -> None:
             if date_dir.is_dir() and date_dir.name < cutoff:
                 shutil.rmtree(date_dir, ignore_errors=True)
                 logger.info("Removed old clips: %s", date_dir)
+
+
+_taxonomy_pending: set[str] = set()   # species_sci currently being fetched
+
+
+async def _fetch_taxonomy(species_sci: str) -> None:
+    """Fetch Order/Family for a species from GBIF and cache in DB.
+    Fire-and-forget — never blocks the detection pipeline.
+    """
+    if not species_sci or species_sci in _taxonomy_pending:
+        return
+    _taxonomy_pending.add(species_sci)
+    try:
+        import httpx
+        genus = species_sci.split()[0]
+        url   = (
+            "https://api.gbif.org/v1/species/match"
+            f"?name={species_sci.replace(' ', '+')}&class=Aves&verbose=false"
+        )
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(url)
+        if r.status_code == 200:
+            d = r.json()
+            if d.get("matchType") not in ("NONE", None):
+                dbmod.upsert_taxonomy(
+                    species_sci=species_sci,
+                    genus=d.get("genus",  genus),
+                    family=d.get("family", ""),
+                    order=d.get("order",  ""),
+                    db_path=dbmod.DB_PATH,
+                )
+                return
+        # Fallback: store genus only so it appears in the chart
+        dbmod.upsert_taxonomy(species_sci, genus, "", "", db_path=dbmod.DB_PATH)
+    except Exception as exc:
+        logging.getLogger("taxonomy").debug(
+            "GBIF lookup failed for %s: %s", species_sci, exc
+        )
+        try:
+            dbmod.upsert_taxonomy(
+                species_sci, species_sci.split()[0], "", "",
+                db_path=dbmod.DB_PATH,
+            )
+        except Exception:
+            pass
+    finally:
+        _taxonomy_pending.discard(species_sci)
 
 
 async def _audio_streamer(
@@ -272,6 +324,7 @@ def create_app() -> FastAPI:
     fastapi_app.include_router(alert_router)
     fastapi_app.include_router(clip_router)
     fastapi_app.include_router(rare_router)
+    fastapi_app.include_router(taxonomy_router)
 
     @fastapi_app.websocket("/ws/detections")
     async def ws_detections(websocket: WebSocket):

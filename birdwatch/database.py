@@ -51,6 +51,13 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 cooldown_mins   INTEGER NOT NULL DEFAULT 10,
                 enabled         INTEGER NOT NULL DEFAULT 1
             );
+            CREATE TABLE IF NOT EXISTS species_taxonomy (
+                species_sci    TEXT PRIMARY KEY,
+                genus          TEXT NOT NULL DEFAULT '',
+                family         TEXT NOT NULL DEFAULT '',
+                taxon_order    TEXT NOT NULL DEFAULT '',
+                updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+            );
             CREATE TABLE IF NOT EXISTS rare_species (
                 species_common  TEXT PRIMARY KEY,
                 min_confidence  REAL NOT NULL DEFAULT 0.75,
@@ -261,3 +268,90 @@ def get_rare_alerts(hours: int = 24, limit: int = 100,
             (f"-{hours}", limit),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── Species taxonomy cache (populated lazily via GBIF) ───────────────────
+
+def get_taxonomy(species_sci: str, db_path: Path = DB_PATH) -> dict | None:
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM species_taxonomy WHERE species_sci=?", (species_sci,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_taxonomy(species_sci: str, genus: str, family: str,
+                    order: str, db_path: Path = DB_PATH) -> None:
+    with get_connection(db_path) as conn:
+        conn.execute(
+            "INSERT INTO species_taxonomy (species_sci,genus,family,taxon_order) "
+            "VALUES (?,?,?,?) ON CONFLICT(species_sci) DO UPDATE SET "
+            "genus=excluded.genus, family=excluded.family, "
+            "taxon_order=excluded.taxon_order, updated_at=datetime('now')",
+            (species_sci, genus, family, order),
+        )
+
+
+def get_taxonomy_map(db_path: Path = DB_PATH) -> dict[str, dict]:
+    """Return {species_sci: {genus, family, taxon_order}} for all cached species."""
+    with get_connection(db_path) as conn:
+        rows = conn.execute("SELECT * FROM species_taxonomy").fetchall()
+    return {r["species_sci"]: dict(r) for r in rows}
+
+
+def get_taxonomy_hierarchy(hours: int = 24, camera_id: str | None = None,
+                            db_path: Path = DB_PATH) -> dict:
+    """Return BirdNET detections aggregated as a D3-ready hierarchy JSON.
+
+    Structure: {name:"Birds", children:[{name:order, children:[{family...}]}]}
+    """
+    from datetime import timedelta
+    date_from = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+
+    with get_connection(db_path) as conn:
+        q = (
+            "SELECT d.species_common, d.species_sci, "
+            "COUNT(*) c, AVG(d.confidence) avg_conf, "
+            "t.genus, t.family, t.taxon_order "
+            "FROM detections d "
+            "LEFT JOIN species_taxonomy t ON d.species_sci = t.species_sci "
+            "WHERE d.timestamp >= ?"
+        )
+        params: list = [date_from]
+        if camera_id:
+            q += " AND d.camera_id = ?"
+            params.append(camera_id)
+        q += " GROUP BY d.species_common ORDER BY c DESC"
+        rows = [dict(r) for r in conn.execute(q, params).fetchall()]
+
+    # Build hierarchy dict
+    tree: dict = {}  # order -> family -> genus -> [species leaf]
+    for r in rows:
+        order  = r["taxon_order"] or "Unknown Order"
+        family = r["family"]      or "Unknown Family"
+        genus  = r["genus"]       or (r["species_sci"].split()[0] if r["species_sci"] else "Unknown")
+
+        tree.setdefault(order, {}).setdefault(family, {}).setdefault(genus, []).append({
+            "name":        r["species_common"],
+            "species_sci": r["species_sci"] or "",
+            "value":       r["c"],
+            "avg_conf":    round(r["avg_conf"] or 0, 3),
+        })
+
+    # Convert to D3 hierarchy format
+    def _genus_node(genus, leaves):
+        if len(leaves) == 1:
+            return leaves[0]          # flatten single-species genus
+        return {"name": genus, "children": leaves}
+
+    root: dict = {"name": "Birds", "children": []}
+    for order, families in sorted(tree.items()):
+        ord_node: dict = {"name": order, "children": []}
+        for family, genera in sorted(families.items()):
+            fam_node: dict = {"name": family, "children": [
+                _genus_node(genus, leaves)
+                for genus, leaves in sorted(genera.items())
+            ]}
+            ord_node["children"].append(fam_node)
+        root["children"].append(ord_node)
+    return root
