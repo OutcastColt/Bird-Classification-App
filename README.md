@@ -121,6 +121,10 @@ any browser on your LAN.
 | History | Filterable/paginated log — filter by camera, species, conservation status, or date range. Audio playback. |
 | Cameras | Add, edit, or remove RTSP/RTSPS streams. Changes take effect immediately without restart. |
 | Settings | Adjust location, confidence threshold, GPU mode, inference workers, alert rules |
+| Visualizations | Interactive charts — see Visualizations section below |
+
+A **live weather widget** (temperature, condition, wind) is displayed in the header, sourced from
+[Open-Meteo](https://open-meteo.com/) using the configured `location.lat`/`lon`. No API key required.
 
 **Bird images and species info** — every detected species shows a Wikipedia photo.
 Click any bird image or species name to open a side panel with:
@@ -131,6 +135,34 @@ Click any bird image or species name to open a side panel with:
 - Links to Wikipedia, iNaturalist, All About Birds, and eBird
 
 **Conservation status** is shown inline next to every species name throughout the dashboard.
+
+## Visualizations
+
+The Visualizations tab contains five interactive charts, all built with D3.js (bundled locally —
+no CDN required). Switch between charts using the sub-navigation bar. Time range, camera, and
+confidence controls apply to all charts.
+
+| Chart | Description |
+|-------|-------------|
+| **Timeline** | Swimlane scatter plot — one lane per species, dots sized by confidence. Scroll/pinch to zoom the time axis; drag to pan. Click a dot to play the clip and open the species info panel. Live detections animate in via WebSocket. |
+| **Species Confidence** | Horizontal bar chart — top N species by detection count, bar colour shows average confidence (red = low, green = high). Click a bar to highlight that species across all charts. |
+| **Spectrogram** | Live FFT waterfall for the selected camera (0–8 kHz). Select a camera from the dropdown; the connection dot turns green when audio is streaming. BirdNET detections appear as labelled dashed lines. |
+| **Rare Alerts** | Watchlist management + recent rare detection panel. Add species with a minimum confidence threshold; a pulsing header badge and toast notification appear when a match is detected. |
+| **Taxonomy** | D3 circle-packing chart — Order → Family → Genus → Species, circle size = detection count. Click to drill down; click the background or breadcrumb to zoom out. Taxonomy is fetched automatically from the free GBIF API. |
+
+### Rare Species Watchlist
+
+Configure the watchlist in **Visualizations → Rare Alerts**:
+1. Type a species name and set a minimum confidence (e.g. `Bald Eagle`, `0.90`)
+2. Click **Add to Watchlist** — saved to the database immediately
+3. A matching detection triggers a toast notification and increments the header badge
+
+### Spectrogram notes
+
+The spectrogram requires a camera to be selected. The server streams raw PCM audio directly from
+the selected camera's FFmpeg pipeline to the browser via a dedicated WebSocket (`/ws/audio/{id}`).
+FFT computation runs entirely in the browser (no server CPU overhead beyond the existing audio
+extraction). Bandwidth per active camera: ~188 KB/s.
 
 ## Alert Rules
 
@@ -156,6 +188,16 @@ Supported notification methods — configured via the Settings tab:
 | `data/birdwatch.db` | All detection records (kept permanently) |
 | `data/clips/` | WAV audio clips (pruned after `alerts.retention_days`) |
 | `logs/birdwatch.log` | Rolling log file (30 days retained) |
+
+The database contains these tables:
+
+| Table | Contents |
+|-------|----------|
+| `detections` | Every BirdNET detection (species, confidence, camera, clip path, coordinates) |
+| `cameras` | Configured RTSP/RTSPS streams |
+| `alert_rules` | Notification rules (webhook, email, Pushover) |
+| `rare_species` | Rare-species watchlist with per-species confidence threshold |
+| `species_taxonomy` | Cached taxonomy (Order/Family/Genus) from GBIF, populated automatically |
 
 ## Testing BirdNET
 
@@ -213,6 +255,21 @@ To test with a real bird recording and your own coordinates:
 The nginx HTTPS configuration and self-signed certificate in `/etc/ssl/birdwatch/`
 are not affected by upgrades — re-run `scripts/setup_https.sh` only if you move
 to a new server or the certificate expires (default 10 years).
+
+## External APIs
+
+BirdWatch uses the following free public APIs. All are called from the **browser** (no server-side
+keys required) except GBIF which is called from the server.
+
+| API | Used for | Key required |
+|-----|----------|--------------|
+| [Wikipedia REST API](https://en.wikipedia.org/api/rest_v1/) | Bird photos and species article text | No |
+| [iNaturalist API](https://api.inaturalist.org/v1/) | IUCN conservation status | No |
+| [Open-Meteo](https://open-meteo.com/) | Header weather widget | No |
+| [GBIF Species API](https://api.gbif.org/v1/species/match) | Taxonomy (Order/Family) for circle-packing chart | No |
+
+Taxonomy is fetched automatically in the background the first time each species is detected and
+cached in the `species_taxonomy` database table. No manual setup needed.
 
 ## Scripts
 
