@@ -915,7 +915,219 @@ class SpectrogramChart {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Rare Alerts Chart — watchlist management + recent rare detection panel
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+class RareAlertsChart {
+
+  constructor(container, options = {}) {
+    this.el          = container;
+    this.onPlayClip  = options.onPlayClip  || (() => {});
+    this.onOpenPanel = options.onOpenPanel || (() => {});
+    this.onViewChart = options.onViewChart || (() => {});  // cross-chart navigation
+
+    this._detections = [];   // all detections (filtered client-side)
+    this._watchlist  = [];   // [{species_common, min_confidence}]
+    this._filters    = { hours: 24, minConf: 0.5 };
+    this._addName    = '';
+    this._addConf    = 0.75;
+
+    this._init();
+  }
+
+  /* ── Setup ──────────────────────────────────────────────────────────── */
+  _init() {
+    d3.select(this.el).selectAll('*').remove();
+
+    const wrap = d3.select(this.el).append('div').attr('class', 'ra-wrap');
+
+    // ── Summary stats ────────────────────────────────────────────────
+    this._statsEl = wrap.append('div').attr('class', 'ra-stats');
+
+    // ── Watchlist management ─────────────────────────────────────────
+    const wl = wrap.append('div').attr('class', 'card ra-section');
+    wl.append('h2').text('Species Watchlist');
+
+    this._watchlistEl = wl.append('div').attr('class', 'ra-wl-list');
+
+    // Add-species form
+    const form = wl.append('div').attr('class', 'ra-add-form');
+    this._nameInput = form.append('input')
+      .attr('type', 'text')
+      .attr('placeholder', 'Species name (e.g. Bald Eagle)')
+      .style('flex', '1');
+    this._confInput = form.append('input')
+      .attr('type', 'number')
+      .attr('min', '0').attr('max', '1').attr('step', '0.05')
+      .attr('value', '0.75')
+      .attr('title', 'Min confidence (0–1)')
+      .style('width', '70px');
+    form.append('button').attr('class', 'btn').style('font-size', '.8rem')
+      .text('Add to Watchlist')
+      .on('click', () => this._addSpecies());
+
+    // ── Recent rare detections ────────────────────────────────────────
+    const rl = wrap.append('div').attr('class', 'card ra-section');
+    rl.append('h2').attr('class', 'ra-alert-heading').text('Recent Rare Detections');
+    this._listEl = rl.append('div').attr('class', 'ra-list');
+
+    this._loadWatchlist();
+  }
+
+  /* ── Watchlist CRUD ─────────────────────────────────────────────────── */
+  async _loadWatchlist() {
+    try {
+      const r = await fetch('/api/rare-species');
+      this._watchlist = r.ok ? await r.json() : [];
+    } catch(e) { this._watchlist = []; }
+    this._renderWatchlist();
+  }
+
+  async _addSpecies() {
+    const name = this._nameInput.property('value').trim();
+    const conf = parseFloat(this._confInput.property('value')) || 0.75;
+    if (!name) return;
+    await fetch('/api/rare-species', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ species_common: name, min_confidence: conf }),
+    });
+    this._nameInput.property('value', '');
+    this._loadWatchlist();
+  }
+
+  async _removeSpecies(species) {
+    await fetch(`/api/rare-species/${encodeURIComponent(species)}`, { method: 'DELETE' });
+    this._loadWatchlist();
+  }
+
+  _renderWatchlist() {
+    const rows = this._watchlistEl.selectAll('.ra-wl-row').data(this._watchlist, d => d.species_common);
+
+    const enter = rows.enter().append('div').attr('class', 'ra-wl-row');
+    enter.append('span').attr('class', 'ra-wl-name');
+    enter.append('span').attr('class', 'ra-wl-conf');
+    enter.append('button').attr('class', 'btn danger').style('font-size','.75rem')
+      .style('padding','.15rem .5rem').text('Remove')
+      .on('click', (ev, d) => this._removeSpecies(d.species_common));
+
+    const merged = enter.merge(rows);
+    merged.select('.ra-wl-name').text(d => d.species_common);
+    merged.select('.ra-wl-conf').text(d => `conf ≥ ${Math.round(d.min_confidence * 100)}%`);
+
+    rows.exit().remove();
+
+    if (!this._watchlist.length) {
+      if (this._watchlistEl.select('.ra-wl-empty').empty()) {
+        this._watchlistEl.append('p').attr('class', 'ra-wl-empty')
+          .text('Watchlist empty — add species above to start receiving rare alerts.');
+      }
+    } else {
+      this._watchlistEl.select('.ra-wl-empty').remove();
+    }
+  }
+
+  /* ── Detection list ─────────────────────────────────────────────────── */
+  _computeRare() {
+    const cutoff = Date.now() - this._filters.hours * 3600000;
+    const watchMap = Object.fromEntries(this._watchlist.map(w => [w.species_common, w.min_confidence]));
+
+    return this._detections.filter(d => {
+      const thresh = watchMap[d.species_common];
+      return thresh !== undefined
+        && d.confidence >= thresh
+        && d.confidence >= this._filters.minConf
+        && new Date(d.timestamp).getTime() >= cutoff;
+    }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }
+
+  _render() {
+    const rare = this._computeRare();
+
+    // Stats
+    const today = rare.filter(d =>
+      new Date(d.timestamp).toDateString() === new Date().toDateString()
+    ).length;
+    this._statsEl.html(`
+      <div class="ra-stat"><span class="ra-stat-num">${today}</span><span class="ra-stat-lbl">today</span></div>
+      <div class="ra-stat"><span class="ra-stat-num">${rare.length}</span><span class="ra-stat-lbl">in selected window</span></div>
+    `);
+
+    // Detection rows
+    const self    = this;
+    const rows    = this._listEl.selectAll('.ra-row').data(rare, d => d.id || (d.timestamp + d.species_common));
+
+    const enter = rows.enter().append('div').attr('class', 'ra-row');
+
+    // Thumbnail
+    enter.append('img').attr('class', 'bird-thumb ra-thumb').attr('alt', '');
+    // Info block
+    const info = enter.append('div').attr('class', 'ra-info');
+    info.append('div').attr('class', 'ra-species');
+    info.append('div').attr('class', 'ra-meta');
+    // Buttons
+    const btns = enter.append('div').attr('class', 'ra-btns');
+    btns.append('button').attr('class', 'play-btn ra-play').text('▶ Play')
+      .on('click', (ev, d) => self.onPlayClip(d.clip_path));
+    btns.append('button').attr('class', 'btn ra-view-tl').style('font-size','.75rem').text('Timeline')
+      .on('click', (ev, d) => self.onViewChart('timeline', d.species_common));
+    btns.append('button').attr('class', 'btn ra-view-info').style('font-size','.75rem').style('background','#2b6cb0').text('Info')
+      .on('click', (ev, d) => self.onOpenPanel(d.species_common, d.species_sci));
+
+    const merged = enter.merge(rows);
+
+    merged.select('.ra-thumb')
+      .attr('src', d => {
+        const key = d.species_sci || d.species_common;
+        const img = window._bwImages && window._bwImages[key];
+        return img || '';
+      })
+      .style('display', d => {
+        const key = d.species_sci || d.species_common;
+        return (window._bwImages && window._bwImages[key]) ? '' : 'none';
+      });
+
+    merged.select('.ra-species')
+      .html(d => `${d.species_common} <span class="conf-badge" style="background:#742a2a;color:#feb2b2">${Math.round(d.confidence*100)}%</span>`);
+
+    merged.select('.ra-meta')
+      .text(d => `${d.camera_id}  ·  ${new Date(d.timestamp).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}`);
+
+    rows.exit().remove();
+
+    if (!rare.length) {
+      if (this._listEl.select('.ra-empty').empty()) {
+        this._listEl.append('p').attr('class', 'ra-empty')
+          .text('No rare detections in the selected time window. Add species to the watchlist above.');
+      }
+    } else {
+      this._listEl.select('.ra-empty').remove();
+    }
+  }
+
+  /* ── Public API ───────────────────────────────────────────────────── */
+  update(data) {
+    this._detections = Array.isArray(data) ? data : [];
+    this._render();
+  }
+
+  setFilters(f) {
+    this._filters = { ...this._filters, ...f };
+    this._render();
+  }
+
+  appendDetection(d) {
+    this._detections.unshift(d);
+    this._render();
+  }
+
+  resize()  { /* no SVG to resize */ }
+  destroy() { d3.select(this.el).selectAll('*').remove(); }
+}
+
 /* ── Register built-in chart types ─────────────────────────────────────── */
 BirdWatchViz.register('timeline',    TimelineChart);
 BirdWatchViz.register('speciesconf', SpeciesConfidenceChart);
 BirdWatchViz.register('spectrogram', SpectrogramChart);
+BirdWatchViz.register('rare',        RareAlertsChart);

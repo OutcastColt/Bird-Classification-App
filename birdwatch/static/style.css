@@ -158,6 +158,115 @@ tr:hover td { background: #1e2535; }
 
 .alert-success { background: #1c4532; border: 1px solid #276749; border-radius: 6px; padding: .5rem 1rem; font-size: .85rem; margin-bottom: .75rem; }
 
+/* ── Rare species alerts ─────────────────────────────────────────────────── */
+
+/* Badge on sub-nav button */
+.rare-badge {
+  position: absolute;
+  top: -4px; right: -4px;
+  background: #e53e3e;
+  color: #fff;
+  border-radius: 999px;
+  font-size: .65rem;
+  font-weight: 700;
+  padding: .1rem .35rem;
+  line-height: 1.2;
+}
+
+/* Header bell button */
+.rare-bell-btn {
+  background: #742a2a;
+  border: 1px solid #9b2c2c;
+  color: #fed7d7;
+  border-radius: 6px;
+  padding: .3rem .65rem;
+  cursor: pointer;
+  font-size: .78rem;
+  font-weight: 700;
+  animation: rare-pulse 2s ease-in-out infinite;
+}
+@keyframes rare-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(229,62,62,.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(229,62,62,0); }
+}
+
+/* Toast notification */
+.rare-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  background: #1a1f2e;
+  border: 2px solid #e53e3e;
+  border-radius: 10px;
+  padding: .75rem 1rem;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(229,62,62,.3);
+  max-width: 320px;
+}
+.rare-toast-icon {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: #fc8181;
+  flex-shrink: 0;
+}
+.rare-toast-title { font-size: .82rem; font-weight: 700; color: #fc8181; }
+.rare-toast-body  { font-size: .78rem; color: #e2e8f0; }
+.rare-toast-close {
+  background: none; border: none; color: #718096;
+  font-size: 1.1rem; cursor: pointer; margin-left: auto; flex-shrink: 0;
+}
+
+/* Rare Alerts Chart panel */
+.ra-wrap { display: flex; flex-direction: column; gap: .75rem; }
+
+.ra-stats {
+  display: flex;
+  gap: 2rem;
+  padding: .5rem .25rem;
+}
+.ra-stat { text-align: center; }
+.ra-stat-num { display: block; font-size: 1.8rem; font-weight: 700; color: #fc8181; }
+.ra-stat-lbl { font-size: .75rem; color: #a0aec0; }
+
+.ra-section h2  { font-size: .9rem; color: #fc8181; margin-bottom: .6rem; font-weight: 700; }
+.ra-alert-heading { color: #fc8181 !important; }
+
+.ra-wl-list  { display: flex; flex-direction: column; gap: .35rem; margin-bottom: .75rem; }
+.ra-wl-row   { display: flex; align-items: center; gap: .75rem; font-size: .88rem; color: #e2e8f0; }
+.ra-wl-name  { flex: 1; }
+.ra-wl-conf  { color: #a0aec0; font-size: .8rem; min-width: 5rem; }
+.ra-wl-empty { color: #718096; font-size: .85rem; }
+
+.ra-add-form {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+  padding-top: .5rem;
+  border-top: 1px solid #2d3748;
+}
+
+.ra-list  { display: flex; flex-direction: column; gap: .5rem; }
+.ra-row   {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  background: rgba(229,62,62,.06);
+  border: 1px solid rgba(229,62,62,.25);
+  border-radius: 8px;
+  padding: .5rem .75rem;
+}
+.ra-thumb { width: 42px; height: 42px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+.ra-info  { flex: 1; min-width: 0; }
+.ra-species { font-weight: 600; font-size: .9rem; color: #e2e8f0; display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.ra-meta    { font-size: .78rem; color: #a0aec0; margin-top: .15rem; }
+.ra-btns    { display: flex; gap: .35rem; flex-shrink: 0; flex-wrap: wrap; }
+.ra-empty   { color: #718096; font-size: .85rem; }
+.ra-play    { font-size: .8rem; }
+
 /* ── Spectrogram chart ───────────────────────────────────────────────────── */
 .bw-spec-hdr {
   display: flex;

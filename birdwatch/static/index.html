@@ -35,6 +35,14 @@
     <span class="weather-wind" style="font-size:.75rem;color:#718096" x-text="weather.wind + ' mph'"></span>
   </div>
 
+  <!-- Rare alert header badge (outside nav so it's always visible) -->
+  <button x-show="rareCount > 0"
+          class="rare-bell-btn"
+          @click="openVizTab(); vizChartType='rare'; mountViz()"
+          :title="rareCount + ' unacknowledged rare detection(s)'">
+    ! <span x-text="rareCount"></span> rare
+  </button>
+
   <span style="font-size:.75rem;color:#718096">
     <span class="ws-label">WS: </span><span :style="wsConnected?'color:#68d391':'color:#fc8181'"
           x-text="wsConnected?'connected':'reconnecting'"></span>
@@ -324,6 +332,12 @@
               @click="vizChartType='speciesconf'; mountViz()">Species Confidence</button>
       <button :class="vizChartType==='spectrogram' ? 'active' : ''"
               @click="vizChartType='spectrogram'; mountViz()">Spectrogram</button>
+      <button :class="vizChartType==='rare' ? 'active' : ''"
+              @click="vizChartType='rare'; mountViz()"
+              style="position:relative">
+        Rare Alerts
+        <span x-show="rareCount > 0" class="rare-badge" x-text="rareCount"></span>
+      </button>
     </div>
 
     <!-- Controls bar -->
@@ -405,6 +419,10 @@
          style="font-size:.8rem;color:#718096;margin-top:.5rem;text-align:center">
         Live FFT waterfall (0–8 kHz) &bull; Detection overlays shown as dashed lines &bull; Hover for frequency &amp; time
       </p>
+      <p x-show="!vizLoading && vizChartType==='rare'"
+         style="font-size:.8rem;color:#718096;margin-top:.5rem;text-align:center">
+        Add species to the watchlist — high-confidence detections trigger alerts &amp; appear here
+      </p>
       <p x-show="!vizLoading && vizChartType==='speciesconf'"
          style="font-size:.8rem;color:#718096;margin-top:.5rem;text-align:center">
         Bar color = avg confidence (red=low, green=high) &bull; Click a bar to filter the Timeline
@@ -416,6 +434,18 @@
 </main>
 
 <!-- ── Bird Info Side Panel ───────────────────────────────────────────── -->
+<!-- ── Rare Alert Toast ───────────────────────────────────────────────── -->
+<div x-show="rareToast" x-transition class="rare-toast"
+     @click="openVizTab(); vizChartType='rare'; mountViz()">
+  <div class="rare-toast-icon">!</div>
+  <div>
+    <div class="rare-toast-title">Rare Detection</div>
+    <div class="rare-toast-body"
+         x-text="rareToast ? rareToast.species + ' · ' + Math.round(rareToast.confidence*100) + '% · ' + rareToast.camera : ''"></div>
+  </div>
+  <button class="rare-toast-close" @click.stop="rareToast=null">&times;</button>
+</div>
+
 <!-- Backdrop -->
 <div x-show="birdPanel.open" @click="closeBirdPanel()"
      style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:498"></div>

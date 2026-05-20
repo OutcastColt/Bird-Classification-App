@@ -51,6 +51,11 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 cooldown_mins   INTEGER NOT NULL DEFAULT 10,
                 enabled         INTEGER NOT NULL DEFAULT 1
             );
+            CREATE TABLE IF NOT EXISTS rare_species (
+                species_common  TEXT PRIMARY KEY,
+                min_confidence  REAL NOT NULL DEFAULT 0.75,
+                added_at        TEXT NOT NULL DEFAULT (datetime('now'))
+            );
         """)
 
 
@@ -202,3 +207,57 @@ def delete_alert_rule(rule_id: int, db_path: Path = DB_PATH) -> bool:
         return conn.execute(
             "DELETE FROM alert_rules WHERE id=?", (rule_id,)
         ).rowcount > 0
+
+
+# ── Rare species watchlist ────────────────────────────────────────────────
+
+def list_rare_species(db_path: Path = DB_PATH) -> list[dict]:
+    with get_connection(db_path) as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM rare_species ORDER BY species_common"
+        ).fetchall()]
+
+
+def upsert_rare_species(species: str, min_confidence: float,
+                        db_path: Path = DB_PATH) -> None:
+    with get_connection(db_path) as conn:
+        conn.execute(
+            "INSERT INTO rare_species (species_common, min_confidence) VALUES (?,?) "
+            "ON CONFLICT(species_common) DO UPDATE SET min_confidence=excluded.min_confidence",
+            (species, min_confidence),
+        )
+
+
+def delete_rare_species(species: str, db_path: Path = DB_PATH) -> bool:
+    with get_connection(db_path) as conn:
+        return conn.execute(
+            "DELETE FROM rare_species WHERE species_common=?", (species,)
+        ).rowcount > 0
+
+
+def get_rare_species_map(db_path: Path = DB_PATH) -> dict[str, float]:
+    """Return {species_common: min_confidence} for the full watchlist."""
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT species_common, min_confidence FROM rare_species"
+        ).fetchall()
+    return {r["species_common"]: r["min_confidence"] for r in rows}
+
+
+def get_rare_alerts(hours: int = 24, limit: int = 100,
+                    db_path: Path = DB_PATH) -> list[dict]:
+    """Recent detections that match the rare-species watchlist."""
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT d.*, r.min_confidence AS rare_threshold
+            FROM detections d
+            JOIN rare_species r ON d.species_common = r.species_common
+            WHERE d.confidence >= r.min_confidence
+              AND d.timestamp >= datetime('now', ? || ' hours')
+            ORDER BY d.timestamp DESC
+            LIMIT ?
+            """,
+            (f"-{hours}", limit),
+        ).fetchall()
+    return [dict(r) for r in rows]

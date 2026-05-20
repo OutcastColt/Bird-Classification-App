@@ -22,6 +22,7 @@ from birdwatch.api.cameras import router as cam_router
 from birdwatch.api.settings import router as set_router
 from birdwatch.api.alerts import router as alert_router
 from birdwatch.api.clips import router as clip_router
+from birdwatch.api.rare import router as rare_router
 
 
 # ── WebSocket connection manager ────────────────────────────────────────────
@@ -85,6 +86,19 @@ async def _result_consumer(
             raw["id"] = det_id   # include DB id in WS payload for dedup
         except Exception as exc:
             logger.error("DB write failed: %s", exc)
+
+        # Check rare-species watchlist and flag if matched
+        try:
+            rare_map = dbmod.get_rare_species_map(db_path=dbmod.DB_PATH)
+            threshold = rare_map.get(raw["species_common"])
+            if threshold is not None and raw["confidence"] >= threshold:
+                raw["rare"] = True
+                logger.warning(
+                    "RARE DETECTION  %-30s  conf=%.0f%%  camera=%s",
+                    raw["species_common"], raw["confidence"] * 100, raw["camera_id"],
+                )
+        except Exception as exc:
+            logger.error("Rare-species check failed: %s", exc)
 
         # Log detection to journald / birdwatch.log
         logger.info(
@@ -257,6 +271,7 @@ def create_app() -> FastAPI:
     fastapi_app.include_router(set_router)
     fastapi_app.include_router(alert_router)
     fastapi_app.include_router(clip_router)
+    fastapi_app.include_router(rare_router)
 
     @fastapi_app.websocket("/ws/detections")
     async def ws_detections(websocket: WebSocket):

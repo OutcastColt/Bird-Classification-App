@@ -41,6 +41,10 @@ document.addEventListener('alpine:init', () => {
     // Weather widget (Open-Meteo — no API key required)
     weather: { temp: null, desc: '', symbol: '', wind: null, loading: false },
 
+    // Rare species alerts
+    rareCount: 0,          // unacknowledged rare detections (clears on tab open)
+    rareToast: null,       // { species, confidence, camera } — shown briefly
+
     // Visualization tab (flat top-level properties — Alpine resolves these reliably)
     vizChartType:      'timeline',
     vizLoading:        false,
@@ -90,6 +94,12 @@ document.addEventListener('alpine:init', () => {
           this.liveDetections.pop();
         this.fetchBirdImage(det.species_common, det.species_sci);
         this.loadDetectionSummary();
+        // Rare species alert
+        if (det.rare) {
+          this.rareCount++;
+          this.rareToast = { species: det.species_common, confidence: det.confidence, camera: det.camera_id };
+          setTimeout(() => { this.rareToast = null; }, 8000);
+        }
         // Forward live detection to active viz chart
         if (BirdWatchViz.hasActive()) BirdWatchViz.getActive().appendDetection?.(det);
       };
@@ -396,12 +406,19 @@ document.addEventListener('alpine:init', () => {
     async mountViz() {
       const container = document.getElementById('viz-chart');
       if (!container) return;
-      this.vizSelectedSpecies = '';   // clear cross-chart selection on chart switch
+      this.vizSelectedSpecies = '';
+      if (this.vizChartType === 'rare') this.rareCount = 0; // clear badge on tab open
+      window._bwImages = this.birdImages;  // expose for RareAlertsChart thumbnails
       BirdWatchViz.mount(this.vizChartType, container, {
         onPlayClip:      clipPath => this.playClip(clipPath),
         onOpenPanel:     (common, sci) => this.openBirdPanel(common, sci),
         onSpeciesSelect: species => { this.vizSelectedSpecies = species || ''; },
-        cameraId:        this.vizCameraId,  // used by spectrogram
+        cameraId:        this.vizCameraId,
+        onViewChart:     (chartType, species) => {
+          this.vizChartType      = chartType;
+          this.vizSelectedSpecies = species || '';
+          this.mountViz();
+        },
       });
       await this.loadVizData();
     },
