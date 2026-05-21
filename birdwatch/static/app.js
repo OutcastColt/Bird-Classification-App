@@ -107,7 +107,9 @@ document.addEventListener('alpine:init', () => {
 
     async loadDetectionSummary() {
       try {
-        const r = await fetch('/api/detections/summary');
+        // Pass browser's local date (YYYY-MM-DD) so "today" matches the viewer's timezone
+        const localDate = new Date().toLocaleDateString('en-CA'); // en-CA gives YYYY-MM-DD
+        const r = await fetch(`/api/detections/summary?local_date=${localDate}`);
         this.detectionSummary = await r.json();
         // Pre-fetch images for top species
         for (const s of this.detectionSummary.top_species)

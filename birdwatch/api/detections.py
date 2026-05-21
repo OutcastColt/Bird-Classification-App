@@ -26,8 +26,9 @@ def get_detections(
 
 
 @router.get("/detections/summary")
-def get_summary():
-    return dbmod.get_detection_summary(db_path=dbmod.DB_PATH)
+def get_summary(local_date: str | None = Query(default=None)):
+    """local_date: YYYY-MM-DD in the browser's timezone, used for the 'today' count."""
+    return dbmod.get_detection_summary(db_path=dbmod.DB_PATH, local_date=local_date)
 
 
 @router.get("/detections/species")

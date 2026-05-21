@@ -132,8 +132,10 @@ def list_detections(
         return [dict(r) for r in conn.execute(q, params).fetchall()]
 
 
-def get_detection_summary(db_path: Path = DB_PATH) -> dict:
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+def get_detection_summary(db_path: Path = DB_PATH,
+                          local_date: str | None = None) -> dict:
+    # Use the date supplied by the browser (local timezone); fall back to UTC
+    today = local_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     with get_connection(db_path) as conn:
         total = conn.execute("SELECT COUNT(*) FROM detections").fetchone()[0]
         today_count = conn.execute(
