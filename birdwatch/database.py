@@ -58,6 +58,11 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 taxon_order    TEXT NOT NULL DEFAULT '',
                 updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
             );
+            CREATE TABLE IF NOT EXISTS settings (
+                key        TEXT PRIMARY KEY,
+                value      TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
             CREATE TABLE IF NOT EXISTS rare_species (
                 species_common  TEXT PRIMARY KEY,
                 min_confidence  REAL NOT NULL DEFAULT 0.75,
@@ -355,3 +360,29 @@ def get_taxonomy_hierarchy(hours: int = 24, camera_id: str | None = None,
             ord_node["children"].append(fam_node)
         root["children"].append(ord_node)
     return root
+
+
+# ── Runtime settings (survives restarts, overrides config.yaml defaults) ──
+
+def get_setting(key: str, db_path: Path = DB_PATH) -> str | None:
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key=?", (key,)
+        ).fetchone()
+    return row["value"] if row else None
+
+
+def set_setting(key: str, value: str, db_path: Path = DB_PATH) -> None:
+    with get_connection(db_path) as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
+            "updated_at=datetime('now')",
+            (key, value),
+        )
+
+
+def get_all_settings(db_path: Path = DB_PATH) -> dict[str, str]:
+    with get_connection(db_path) as conn:
+        rows = conn.execute("SELECT key, value FROM settings").fetchall()
+    return {r["key"]: r["value"] for r in rows}

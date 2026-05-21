@@ -148,6 +148,28 @@ async def _clip_cleanup(retention_days: int) -> None:
                 logger.info("Removed old clips: %s", date_dir)
 
 
+def _apply_db_settings(cfg) -> None:
+    """Override config values with any settings the user saved via the dashboard.
+
+    config.yaml provides initial defaults; the database is the source of truth
+    for any values changed at runtime so they survive service restarts.
+    """
+    log = logging.getLogger("startup")
+    try:
+        saved = dbmod.get_all_settings(db_path=dbmod.DB_PATH)
+        if not saved:
+            return
+        if "location.lat"           in saved: cfg.location.lat           = float(saved["location.lat"])
+        if "location.lon"           in saved: cfg.location.lon           = float(saved["location.lon"])
+        if "birdnet.min_confidence" in saved: cfg.birdnet.min_confidence = float(saved["birdnet.min_confidence"])
+        if "birdnet.overlap"        in saved: cfg.birdnet.overlap        = float(saved["birdnet.overlap"])
+        if "birdnet.use_gpu"        in saved: cfg.birdnet.use_gpu        = saved["birdnet.use_gpu"] == "true"
+        if "inference.workers"      in saved: cfg.inference.workers      = int(saved["inference.workers"])
+        log.info("Applied %d runtime setting(s) from database", len(saved))
+    except Exception as exc:
+        log.warning("Could not apply DB settings overrides: %s", exc)
+
+
 _taxonomy_pending: set[str] = set()   # species_sci currently being fetched
 
 
@@ -258,6 +280,10 @@ def create_app() -> FastAPI:
             )
 
         init_db()
+
+        # Apply any runtime settings overrides saved by the user via the dashboard.
+        # These take precedence over config.yaml so changes survive service restarts.
+        _apply_db_settings(cfg)
 
         # Seed cameras from config.yaml into the database so they appear in the UI
         for cam in cfg.cameras:
