@@ -121,6 +121,21 @@ button.play-btn {
   font-size: .85rem;
 }
 button.play-btn:hover { background: #4a5568; }
+a.play-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: #68d391;
+}
+a.play-btn:hover { background: #4a5568; }
+
+/* Three-button clip group (play/stop · download · spectrogram) */
+.clip-btns {
+  display: flex;
+  gap: .25rem;
+  flex-shrink: 0;
+}
 
 .form-row { display: flex; gap: .75rem; margin-bottom: .75rem; flex-wrap: wrap; }
 .form-row label { display: flex; flex-direction: column; gap: .25rem; font-size: .85rem; color: #a0aec0; }

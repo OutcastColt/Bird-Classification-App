@@ -118,7 +118,15 @@
             </span>
             <span class="cam-label" x-text="det.camera_id"></span>
             <span class="time-label" x-text="formatTime(det.timestamp)"></span>
-            <button class="play-btn" @click="playClip(det.clip_path)">&#9654; Play</button>
+            <div class="clip-btns">
+              <button class="play-btn" @click="toggleClip(det.clip_path)"
+                      :title="playingClip===det.clip_path?'Stop':'Play'"
+                      x-text="playingClip===det.clip_path?'■':'▶'"></button>
+              <a class="play-btn" :href="'/api/clips/'+det.clip_path"
+                 :download="det.clip_path.split('/').pop()" title="Download WAV">↓</a>
+              <button class="play-btn" title="View spectrogram"
+                      @click="openClipPopup(det.clip_path, det.species_common+' · '+formatTime(det.timestamp))">~</button>
+            </div>
           </div>
         </template>
         <p x-show="liveDetections.length===0" style="color:#718096;font-size:.85rem;padding:.5rem 0">
@@ -203,7 +211,17 @@
                 </td>
                 <td x-text="formatConf(row.confidence)"></td>
                 <td x-text="row.camera_id"></td>
-                <td><button class="play-btn" @click="playClip(row.clip_path)">&#9654;</button></td>
+                <td>
+                  <div class="clip-btns">
+                    <button class="play-btn" @click="toggleClip(row.clip_path)"
+                            :title="playingClip===row.clip_path?'Stop':'Play'"
+                            x-text="playingClip===row.clip_path?'■':'▶'"></button>
+                    <a class="play-btn" :href="'/api/clips/'+row.clip_path"
+                       :download="row.clip_path.split('/').pop()" title="Download WAV">↓</a>
+                    <button class="play-btn" title="View spectrogram"
+                            @click="openClipPopup(row.clip_path, row.species_common+' · '+formatTime(row.timestamp))">~</button>
+                  </div>
+                </td>
               </tr>
             </template>
             <tr x-show="historyRows.length===0">
@@ -440,6 +458,39 @@
 </main>
 
 <!-- ── Bird Info Side Panel ───────────────────────────────────────────── -->
+<!-- ── Clip Spectrogram Popup ─────────────────────────────────────────── -->
+<div x-show="clipPopup.open" @click.self="clipPopup.open=false"
+     style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:600;display:flex;align-items:center;justify-content:center;padding:1rem">
+  <div style="background:#1a1f2e;border:1px solid #2d3748;border-radius:12px;width:100%;max-width:720px;overflow:hidden">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;gap:.75rem;padding:.9rem 1rem;border-bottom:1px solid #2d3748">
+      <span style="flex:1;font-size:.9rem;font-weight:600;color:#e2e8f0" x-text="clipPopup.label"></span>
+      <div class="clip-btns" style="margin:0">
+        <button class="play-btn" @click="toggleClip(clipPopup.clipPath)"
+                :title="playingClip===clipPopup.clipPath?'Stop':'Play'"
+                x-text="playingClip===clipPopup.clipPath?'■':'▶'"></button>
+        <a class="play-btn" :href="'/api/clips/'+clipPopup.clipPath"
+           :download="clipPopup.clipPath.split('/').pop()" title="Download WAV">↓</a>
+      </div>
+      <button @click="clipPopup.open=false"
+              style="background:none;border:none;color:#718096;font-size:1.4rem;cursor:pointer;line-height:1">&times;</button>
+    </div>
+    <!-- Spectrogram canvas -->
+    <div style="position:relative;background:#07090f">
+      <div x-show="clipPopup.loading"
+           style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a0aec0;font-size:.85rem">
+        Computing spectrogram...
+      </div>
+      <canvas id="clip-spec-canvas" width="700" height="220"
+              style="width:100%;display:block"></canvas>
+    </div>
+    <!-- Frequency axis label -->
+    <div style="display:flex;justify-content:space-between;padding:.3rem .75rem;font-size:.72rem;color:#4a5568;border-top:1px solid #1e2535">
+      <span>0 Hz</span><span style="color:#a0aec0">Frequency (0 – 8 kHz)</span><span>8 kHz</span>
+    </div>
+  </div>
+</div>
+
 <!-- ── Rare Alert Toast ───────────────────────────────────────────────── -->
 <div x-show="rareToast" x-transition class="rare-toast"
      @click="openVizTab(); vizChartType='rare'; mountViz()">
@@ -510,7 +561,15 @@
           <span style="color:#a0aec0;font-size:.8rem;min-width:5rem" x-text="formatTime(rec.timestamp)"></span>
           <span style="color:#a0aec0;flex:1" x-text="rec.camera_id"></span>
           <span style="color:#68d391;font-size:.8rem" x-text="formatConf(rec.confidence)"></span>
-          <button class="play-btn" @click="playClip(rec.clip_path)">&#9654;</button>
+          <div class="clip-btns">
+            <button class="play-btn" @click="toggleClip(rec.clip_path)"
+                    :title="playingClip===rec.clip_path?'Stop':'Play'"
+                    x-text="playingClip===rec.clip_path?'■':'▶'"></button>
+            <a class="play-btn" :href="'/api/clips/'+rec.clip_path"
+               :download="rec.clip_path.split('/').pop()" title="Download WAV">↓</a>
+            <button class="play-btn" title="View spectrogram"
+                    @click="openClipPopup(rec.clip_path, birdPanel.common+' · '+formatTime(rec.timestamp))">~</button>
+          </div>
         </div>
       </template>
     </div>

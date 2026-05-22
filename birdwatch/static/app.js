@@ -41,6 +41,12 @@ document.addEventListener('alpine:init', () => {
     // Weather widget (Open-Meteo — no API key required)
     weather: { temp: null, desc: '', symbol: '', wind: null, loading: false },
 
+    // Audio playback state
+    playingClip: null,   // clip_path currently playing (reactive, drives play/stop icons)
+
+    // Clip popup (spectrogram viewer)
+    clipPopup: { open: false, loading: false, clipPath: '', label: '' },
+
     // Rare species alerts
     rareCount: 0,          // unacknowledged rare detections (clears on tab open)
     rareToast: null,       // { species, confidence, camera } — shown briefly
@@ -240,9 +246,135 @@ document.addEventListener('alpine:init', () => {
     histPrev() { if (this.histPage > 0) { this.histPage--; this.loadHistory(); } },
     histNext() { this.histPage++; this.loadHistory(); },
 
-    playClip(clipPath) {
+    // Keep legacy name so viz charts calling onPlayClip still work
+    playClip(clipPath) { this.toggleClip(clipPath); },
+
+    toggleClip(clipPath) {
+      // Stop current if same clip
+      if (this.playingClip === clipPath && this._audio) {
+        this._audio.pause();
+        this._audio = null;
+        this.playingClip = null;
+        return;
+      }
+      // Stop any other clip
+      if (this._audio) { this._audio.pause(); this._audio = null; }
+
       const audio = new Audio(`/api/clips/${clipPath}`);
-      audio.play();
+      this._audio     = audio;
+      this.playingClip = clipPath;
+      const reset = () => { this.playingClip = null; this._audio = null; };
+      audio.onended = reset;
+      audio.onerror = reset;
+      audio.play().catch(reset);
+    },
+
+    async openClipPopup(clipPath, label) {
+      this.clipPopup = { open: true, loading: true, clipPath, label: label || '' };
+      await new Promise(r => setTimeout(r, 60));  // let modal render
+      const canvas = document.getElementById('clip-spec-canvas');
+      if (canvas) await this._renderClipSpectrogram(canvas, clipPath);
+      this.clipPopup.loading = false;
+    },
+
+    async _renderClipSpectrogram(canvas, clipPath) {
+      try {
+        const resp = await fetch(`/api/clips/${clipPath}`);
+        if (!resp.ok) return;
+        const arrayBuf = await resp.arrayBuffer();
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuf  = await audioCtx.decodeAudioData(arrayBuf);
+        const samples   = audioBuf.getChannelData(0);
+        const sr        = audioBuf.sampleRate;
+        audioCtx.close();
+
+        const FFT  = 1024, HOP = 256, MAX_FREQ = 8000;
+        const W = canvas.width, H = canvas.height;
+        const binsToShow = Math.floor(MAX_FREQ / (sr / 2) * (FFT / 2));
+        const totalWins  = Math.max(1, Math.floor((samples.length - FFT) / HOP));
+        const step       = Math.max(1, Math.floor(totalWins / W));
+
+        // Compute all FFT windows (sampled to canvas width)
+        let normMax = 0;
+        const cols = [];
+        for (let wi = 0; wi < totalWins; wi += step) {
+          const re = new Float32Array(FFT), im = new Float32Array(FFT);
+          const off = wi * HOP;
+          for (let j = 0; j < FFT; j++) {
+            const w = 0.5 * (1 - Math.cos(6.2832 * j / (FFT - 1)));
+            re[j] = (samples[off + j] || 0) * w;
+          }
+          this._fftInPlace(re, im);
+          const mag = new Float32Array(binsToShow);
+          for (let j = 0; j < binsToShow; j++) {
+            mag[j] = Math.log1p(Math.sqrt(re[j]*re[j] + im[j]*im[j]));
+            if (mag[j] > normMax) normMax = mag[j];
+          }
+          cols.push(mag);
+        }
+
+        // Render using ImageData (fast)
+        const norm = Math.max(normMax, 0.001);
+        const img  = new ImageData(W, H);
+        const cw   = W / cols.length;
+        for (let ci = 0; ci < cols.length; ci++) {
+          const mag = cols[ci];
+          const x0  = Math.round(ci * cw);
+          const x1  = Math.round((ci + 1) * cw);
+          for (let py = 0; py < H; py++) {
+            const bin   = Math.floor((1 - py / H) * binsToShow);
+            const level = Math.min(1, (mag[Math.min(bin, mag.length-1)] || 0) / norm);
+            const [r, g, b] = this._specColor(level);
+            for (let px = x0; px < x1; px++) {
+              const i = (py * W + px) * 4;
+              img.data[i]   = r; img.data[i+1] = g;
+              img.data[i+2] = b; img.data[i+3] = 255;
+            }
+          }
+        }
+        canvas.getContext('2d').putImageData(img, 0, 0);
+      } catch(e) {
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#0f1117'; ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle = '#718096'; ctx.font = '13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Unable to render spectrogram', canvas.width/2, canvas.height/2);
+      }
+    },
+
+    _fftInPlace(re, im) {
+      const n = re.length;
+      let j = 0;
+      for (let i = 1; i < n; i++) {
+        let b = n >> 1;
+        for (; j & b; b >>= 1) j ^= b;
+        j ^= b;
+        if (i < j) { [re[i], re[j]] = [re[j], re[i]]; }
+      }
+      for (let len = 2; len <= n; len <<= 1) {
+        const ang = -6.2832 / len, wr = Math.cos(ang), wi = Math.sin(ang);
+        for (let i = 0; i < n; i += len) {
+          let cr = 1, ci = 0;
+          const half = len >> 1;
+          for (let k = 0; k < half; k++) {
+            const ur = re[i+k], ui = im[i+k];
+            const vr = re[i+k+half]*cr - im[i+k+half]*ci;
+            const vi = re[i+k+half]*ci + im[i+k+half]*cr;
+            re[i+k]      = ur+vr; im[i+k]      = ui+vi;
+            re[i+k+half] = ur-vr; im[i+k+half] = ui-vi;
+            const nr = cr*wr - ci*wi; ci = cr*wi + ci*wr; cr = nr;
+          }
+        }
+      }
+    },
+
+    _specColor(t) {
+      if (t <= 0)   return [0,0,0];
+      if (t < 0.15) { const s=t/0.15;         return [0,0,Math.round(s*180)]; }
+      if (t < 0.35) { const s=(t-0.15)/0.20;  return [0,Math.round(s*180),Math.round(180+s*75)]; }
+      if (t < 0.55) { const s=(t-0.35)/0.20;  return [0,Math.round(180+s*75),Math.round(255-s*100)]; }
+      if (t < 0.75) { const s=(t-0.55)/0.20;  return [Math.round(s*255),255,0]; }
+                    { const s=(t-0.75)/0.25;  return [255,255,Math.round(s*255)]; }
     },
 
     formatConf(c) { return `${(c * 100).toFixed(0)}%`; },
