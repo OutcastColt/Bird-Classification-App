@@ -307,6 +307,7 @@ def get_taxonomy_map(db_path: Path = DB_PATH) -> dict[str, dict]:
 
 
 def get_taxonomy_hierarchy(hours: int = 24, camera_id: str | None = None,
+                            min_confidence: float = 0.0,
                             db_path: Path = DB_PATH) -> dict:
     """Return BirdNET detections aggregated as a D3-ready hierarchy JSON.
 
@@ -325,6 +326,9 @@ def get_taxonomy_hierarchy(hours: int = 24, camera_id: str | None = None,
             "WHERE d.timestamp >= ?"
         )
         params: list = [date_from]
+        if min_confidence > 0:
+            q += " AND d.confidence >= ?"
+            params.append(min_confidence)
         if camera_id:
             q += " AND d.camera_id = ?"
             params.append(camera_id)

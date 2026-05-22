@@ -431,7 +431,7 @@ document.addEventListener('alpine:init', () => {
         let url;
         if (this.vizChartType === 'taxonomy') {
           // Taxonomy chart needs a pre-aggregated hierarchy from its own endpoint
-          const p = new URLSearchParams({ hours: this.vizHours });
+          const p = new URLSearchParams({ hours: this.vizHours, min_confidence: this.vizMinConf });
           if (this.vizCameraId) p.set('camera_id', this.vizCameraId);
           url = `/api/detections/taxonomy?${p}`;
         } else {
