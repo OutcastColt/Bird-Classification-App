@@ -166,7 +166,10 @@ class TimelineChart {
 
   _zoomReset() {
     this._currentXScale = null;
+    // Detach handler before resetting so _onZoom doesn't fire and re-set _currentXScale
+    this._zoom.on('zoom', null);
     this._zoomRect.call(this._zoom.transform, d3.zoomIdentity);
+    this._zoom.on('zoom', ev => this._onZoom(ev));
   }
 
   _render() {
