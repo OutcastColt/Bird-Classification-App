@@ -43,6 +43,7 @@ class SettingsUpdate(BaseModel):
     overlap: Optional[float] = None
     use_gpu: Optional[bool] = None
     workers: Optional[int] = None
+    retention_days: Optional[int] = None
 
 
 @router.get("/settings")
@@ -55,6 +56,7 @@ def get_settings(request: Request):
         "overlap": cfg.birdnet.overlap,
         "use_gpu": cfg.birdnet.use_gpu,
         "workers": cfg.inference.workers,
+        "retention_days": cfg.alerts.retention_days,
     }
 
 
@@ -80,6 +82,9 @@ def update_settings(body: SettingsUpdate, request: Request):
     if body.workers is not None:
         cfg.inference.workers = body.workers
         changes.append(("inference.workers",      str(body.workers)))
+    if body.retention_days is not None:
+        cfg.alerts.retention_days = body.retention_days
+        changes.append(("alerts.retention_days",  str(body.retention_days)))
 
     # Persist to SQLite (primary, always works) and config.yaml (convenience backup)
     for key, value in changes:
