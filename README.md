@@ -46,6 +46,7 @@ Key settings to update:
 | `birdnet.min_confidence` | Detection threshold (0.70 recommended) |
 | `birdnet.use_gpu` | Set `true` to enable OpenCL GPU acceleration |
 | `inference.workers` | Number of BirdNET workers (4 recommended for CPU) |
+| `alerts.retention_days` | Days to keep audio clips on disk (default 90) — also adjustable in the Settings tab |
 
 ### UniFi Camera URLs
 
@@ -120,7 +121,7 @@ any browser on your LAN.
 | Live | Real-time detection feed, camera status, detection count, top-10 species |
 | History | Filterable/paginated log — filter by camera, species, conservation status, or date range. Audio playback. |
 | Cameras | Add, edit, or remove RTSP/RTSPS streams. Changes take effect immediately without restart. |
-| Settings | Adjust location, confidence threshold, GPU mode, inference workers, alert rules |
+| Settings | Adjust location, confidence threshold, GPU mode, inference workers, audio retention period, alert rules |
 | Visualizations | Interactive charts — see Visualizations section below |
 
 A **live weather widget** (temperature, condition, wind) is displayed in the header, sourced from
@@ -186,7 +187,7 @@ Supported notification methods — configured via the Settings tab:
 | Location | Contents |
 |----------|----------|
 | `data/birdwatch.db` | All detection records (kept permanently) |
-| `data/clips/` | WAV audio clips (pruned after `alerts.retention_days`) |
+| `data/clips/` | WAV audio clips (pruned after `alerts.retention_days` — configurable in the Settings tab) |
 | `logs/birdwatch.log` | Rolling log file (30 days retained) |
 
 The database contains these tables:
